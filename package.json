@@ -1,0 +1,73 @@
+{
+  "name": "h3-typed-routes",
+  "version": "0.0.0",
+  "description": "Experimental library to generate typed routes for H3",
+  "license": "MIT",
+  "author": {
+    "name": "Sandro Circi",
+    "email": "sandro.circi@digitoolmedia.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandros94/h3-typed-routes.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "obuild",
+    "dev": "pnpm -F playground dev",
+    "dev:prepare": "obuild --stub && pnpm simple-git-hooks",
+    "lint": "oxlint . && oxfmt --check .",
+    "fmt": "automd && oxlint --fix . && oxfmt .",
+    "prepack": "pnpm build",
+    "release": "pnpm test && pnpm prepack && changelogen --release --push",
+    "stub": "obuild --stub",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsgo --noEmit",
+    "bench": "vitest bench --run"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "@types/node": "^25",
+    "@typescript/native-preview": "7.0.0-dev.20260421.2",
+    "@valibot/to-json-schema": "^1.7.0",
+    "@vitest/coverage-v8": "^4.1.7",
+    "automd": "^0.4.3",
+    "changelogen": "^0.6.2",
+    "nano-staged": "^1.0.2",
+    "obuild": "^0.4.35",
+    "oxfmt": "^0.51.0",
+    "oxlint": "^1.66.0",
+    "simple-git-hooks": "^2.13.1",
+    "typescript": "^6.0.3",
+    "valibot": "^1.4.1",
+    "vitest": "^4.1.7",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
+    "srvx": "^0.11.15"
+  },
+  "resolutions": {
+    "h3-typed-routes": "link:."
+  },
+  "simple-git-hooks": {
+    "pre-commit": "./node_modules/.bin/nano-staged"
+  },
+  "nano-staged": {
+    "*.{js,ts,mjs,cjs,json,yml,md}": [
+      "pnpm run fmt"
+    ]
+  },
+  "packageManager": "pnpm@10.33.1"
+}
