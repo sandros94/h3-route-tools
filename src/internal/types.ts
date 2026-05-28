@@ -31,9 +31,9 @@ export type MediaTypeMap<S extends SchemaWithJSON = SchemaWithJSON> = {
 
 /**
  * Body validation accepts three shapes:
- * - `undefined`: no validation, full pass-through (preserves `defineHandler` migration ergonomics)
- * - `SchemaWithJSON`: bare schema, bound to `application/json` only; other content types pass through
- * - `MediaTypeMap`: strict — only declared content types accepted, 415 on mismatch
+ * - `undefined`: no validation; the request is passed through unchanged.
+ * - `SchemaWithJSON`: bare schema bound to `application/json`; other content types pass through unvalidated.
+ * - `MediaTypeMap`: strict — only declared content types are accepted, 415 on mismatch.
  */
 export type BodyValidation = SchemaWithJSON | MediaTypeMap;
 
@@ -91,6 +91,26 @@ export type ValidationErrorPayload = HTTPErrorPayload<ValidationErrorData>;
 
 /** Serialized 415 envelope produced when no declared content-type matches. */
 export type UnsupportedMediaTypePayload = HTTPErrorPayload<UnsupportedMediaTypeData>;
+
+/** A JSON Schema document body — the shape produced by `StandardJSONSchemaV1.Converter`. */
+export type JSONSchemaDocument = Record<string, unknown>;
+
+/** Map of extracted component schemas keyed by `$id`, ready to drop into `components.schemas`. */
+export type ComponentsRegistry = Record<string, JSONSchemaDocument>;
+
+/** Options for `extractComponents`. */
+export interface ExtractComponentsOptions {
+  /** Pre-existing components map; entries are merged in (first-write-wins on key conflicts). */
+  components?: Readonly<ComponentsRegistry>;
+}
+
+/** Result of `extractComponents`. */
+export interface ExtractComponentsResult {
+  /** The input schema with every `$id`-bearing subschema replaced by a `$ref`. */
+  schema: JSONSchemaDocument;
+  /** The merged components map (existing entries + newly extracted ones). */
+  components: ComponentsRegistry;
+}
 
 /**
  * Per-method validation config consumed by the route primitives.

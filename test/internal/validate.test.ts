@@ -193,8 +193,8 @@ describe("validateBody — media-type map (strict)", () => {
       contentType: "application/x-www-form-urlencoded",
     });
     const wrapped = validateBody(req, { "application/x-www-form-urlencoded": formText });
-    // @ts-expect-error: validateBody-wrapped formData returns the validated plain object at runtime;
-    // the proxy doesn't retype the parser method until Phase 4's defineRouteHandler types the full request.
+    // @ts-expect-error: the wrapped parser returns the validated plain object at runtime,
+    // but `ServerRequest.formData()` is statically typed as `Promise<FormData>`.
     const data: { name: string } = await wrapped.formData();
     expect(data.name).toBe("Carol");
   });

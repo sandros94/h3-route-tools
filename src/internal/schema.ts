@@ -30,8 +30,8 @@ export function getStandardJSONSchema(
 
 /**
  * Read `$id` from an emitted JSON Schema, if present.
- * The `$id` keyword is the canonical JSON Schema 2020-12 identifier and the hoisting key
- * used to lift subschemas into `components.schemas`.
+ * The `$id` keyword is the canonical JSON Schema 2020-12 identifier; subschemas carrying
+ * it are extracted into `components.schemas` by `extractComponents`.
  */
 export function readSchemaId(jsonSchema: Record<string, unknown> | undefined): string | undefined {
   if (!jsonSchema) return undefined;
