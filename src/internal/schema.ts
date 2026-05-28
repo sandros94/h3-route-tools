@@ -1,10 +1,15 @@
-import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
-import type { GetJSONSchemaOptions, SchemaWithJSON } from "./types.ts";
+import type { StandardJSONSchemaV1, StandardTypedV1 } from "@standard-schema/spec";
+import type { GetJSONSchemaOptions } from "./types.ts";
 
-/** Type guard: does this schema additionally implement `StandardJSONSchemaV1`? */
-export function hasJSONSchema<I, O>(
-  schema: SchemaWithJSON<I, O>,
-): schema is StandardSchemaV1<I, O> & StandardJSONSchemaV1<I, O> {
+/**
+ * Type guard: does this schema additionally implement `StandardJSONSchemaV1`?
+ *
+ * Accepts any `StandardTypedV1` (the shared base of `StandardSchemaV1` and `StandardJSONSchemaV1`),
+ * so both validation-capable schemas and doc-only schemas can be introspected.
+ */
+export function hasJSONSchema<T extends StandardTypedV1>(
+  schema: T,
+): schema is T & StandardJSONSchemaV1<unknown, unknown> {
   return "jsonSchema" in schema["~standard"];
 }
 
@@ -13,8 +18,8 @@ export function hasJSONSchema<I, O>(
  * Returns `undefined` if the schema does not implement `StandardJSONSchemaV1`.
  * Default target is `draft-2020-12` (aligned with OpenAPI 3.1).
  */
-export function getStandardJSONSchema<I, O>(
-  schema: SchemaWithJSON<I, O>,
+export function getStandardJSONSchema(
+  schema: StandardTypedV1,
   options: GetJSONSchemaOptions = {},
 ): Record<string, unknown> | undefined {
   if (!hasJSONSchema(schema)) return undefined;

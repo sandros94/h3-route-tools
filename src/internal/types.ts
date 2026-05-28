@@ -76,6 +76,23 @@ export interface UnsupportedMediaTypeData {
 }
 
 /**
+ * The serialized envelope of any `HTTPError`. Mirrors `h3`'s `HTTPError` toJSON shape.
+ * `DataT` parameterizes the `data` field for typed error envelopes (e.g. validation issues).
+ */
+export interface HTTPErrorPayload<DataT = unknown> {
+  status: number;
+  statusText: string;
+  message: string;
+  data?: DataT;
+}
+
+/** Serialized 400 envelope produced by validation failures. */
+export type ValidationErrorPayload = HTTPErrorPayload<ValidationErrorData>;
+
+/** Serialized 415 envelope produced when no declared content-type matches. */
+export type UnsupportedMediaTypePayload = HTTPErrorPayload<UnsupportedMediaTypeData>;
+
+/**
  * Per-method validation config consumed by the route primitives.
  * `response` is intentionally absent here — it's a separate concern handled at the handler level.
  */
