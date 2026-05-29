@@ -130,14 +130,11 @@ export type StringHeaders<T> = {
 };
 
 /**
- * H3Event with `context.params` narrowed to the inferred schema output.
- * Note: params remains optional at the type level for H3 compatibility — guaranteed at runtime.
+ * H3Event with `context.params` narrowed to the inferred schema output and required.
+ * Use when params have been validated; otherwise plain `H3Event` already keeps `params` optional.
  */
-export type ValidatedH3Event<RequestT extends EventHandlerRequest, Params> = Omit<
-  H3Event<RequestT>,
-  "context"
-> & {
-  context: Omit<H3Event["context"], "params"> & {
-    params?: Params;
-  };
+export type ValidatedH3Event<RequestT extends EventHandlerRequest, Params> = {
+  [K in keyof H3Event<RequestT>]: K extends "context"
+    ? Omit<H3Event<RequestT>[K], "params"> & { params: Params }
+    : H3Event<RequestT>[K];
 };
