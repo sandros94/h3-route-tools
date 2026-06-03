@@ -3,8 +3,11 @@ import type {
   ComponentsRegistry,
   JSONSchemaDocument,
   SchemaWithJSON,
+  StandardJSONSchemaV1,
   StandardTypedV1,
   StatusCodeKey,
+  StreamDoc,
+  StreamMap,
 } from "./types.ts";
 import {
   type DocumentableMethodDef,
@@ -80,6 +83,7 @@ export function toOpenAPIOperation(
 ): OpenAPIOperation {
   const validate = method.validate;
   const body: BodyValidation | undefined = validate?.body;
+  const stream: StreamMap | undefined = validate?.stream;
   const query: SchemaWithJSON | undefined = validate?.query;
   const headers: SchemaWithJSON | undefined = validate?.headers;
   const response: ResponseValidation | undefined = validate?.response;
@@ -91,10 +95,11 @@ export function toOpenAPIOperation(
   if (headers) parameters.push(...schemaToParameters(headers, { in: "header" }));
   if (parameters.length) operation.parameters = parameters;
 
-  if (body) operation.requestBody = toRequestBody(body);
+  if (body || stream) operation.requestBody = toRequestBody(body, stream);
 
   const autoErrors = computeAutoErrors({
     body,
+    stream,
     headers,
     query,
     response,
@@ -156,16 +161,43 @@ export function buildOpenAPIDocument(options: {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function toRequestBody(body: BodyValidation): OpenAPIRequestBody {
+function toRequestBody(
+  body: BodyValidation | undefined,
+  stream: StreamMap | undefined,
+): OpenAPIRequestBody {
   const content: Record<string, OpenAPIMediaType> = {};
-  if (isSchema(body)) {
-    content["application/json"] = toMediaType(body);
-  } else {
-    for (const [mediaType, schema] of Object.entries(body)) {
-      content[mediaType] = toMediaType(schema);
+  if (body) {
+    if (isStandardSchema(body)) {
+      content["application/json"] = toMediaType(body);
+    } else {
+      for (const [mediaType, schema] of Object.entries(body)) {
+        content[mediaType] = toMediaType(schema);
+      }
+    }
+  }
+  if (stream) {
+    for (const [mediaType, doc] of Object.entries(stream)) {
+      content[mediaType] = streamMediaType(doc);
     }
   }
   return { required: true, content };
+}
+
+/**
+ * A streamed content type is documented by its {@link StreamDoc}; `true` emits an empty media-type
+ * object — the content-type key already identifies the payload, and OpenAPI 3.1 has no `format: "binary"`.
+ */
+function streamMediaType(doc: StreamDoc): OpenAPIMediaType {
+  if (doc === true) return {};
+  return isDocSchema(doc) ? toMediaType(doc) : { schema: doc };
+}
+
+function isStandardSchema(value: object): value is SchemaWithJSON {
+  return "~standard" in value;
+}
+
+function isDocSchema(doc: StandardJSONSchemaV1 | JSONSchemaDocument): doc is StandardJSONSchemaV1 {
+  return "~standard" in doc;
 }
 
 function toResponses(
@@ -205,6 +237,7 @@ function toMediaType(schema: StandardTypedV1): OpenAPIMediaType {
 
 function computeAutoErrors(input: {
   body: BodyValidation | undefined;
+  stream: StreamMap | undefined;
   headers: SchemaWithJSON | undefined;
   query: SchemaWithJSON | undefined;
   response: ResponseValidation | undefined;
@@ -216,7 +249,7 @@ function computeAutoErrors(input: {
   const out: Array<[string, StandardTypedV1]> = [];
 
   const needs400 = input.hasRouteParams || !!input.body || !!input.headers || !!input.query;
-  const needs415 = !!input.body && !isSchema(input.body);
+  const needs415 = (!!input.body && !isSchema(input.body)) || !!input.stream;
   const needs500 = !!input.response;
 
   if (needs400) out.push(["400", overrides?.[400] ?? ValidationErrorSchema]);

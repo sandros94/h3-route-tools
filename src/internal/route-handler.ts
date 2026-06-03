@@ -5,7 +5,9 @@ import {
   type H3Event,
   type H3RouteMeta,
   type Middleware,
+  HTTPError,
   defineHandler,
+  getQuery,
 } from "h3";
 
 import type {
@@ -15,6 +17,7 @@ import type {
   RouteMethod,
   SchemaWithJSON,
   StatusCodeKey,
+  StreamMap,
   ValidatedH3Event,
 } from "./types.ts";
 import {
@@ -43,6 +46,8 @@ export interface MethodValidate<
   Response extends ResponseValidation | undefined = undefined,
 > {
   body?: Body;
+  /** Raw, never-buffered content types read via `event.req.body`; doc-only, no value validation. */
+  stream?: StreamMap;
   headers?: Headers;
   query?: Query;
   response?: Response;
@@ -51,19 +56,6 @@ export interface MethodValidate<
 /** Loose constraint accepting any `MethodValidate` variant; used as a generic bound. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyMethodValidate = MethodValidate<any, any, any, any>;
-
-/**
- * Per-method definition: validation + handler + optional method-specific meta.
- * `P` is the route-level params schema, threaded down so `event.context.params` is typed.
- */
-export interface MethodDef<
-  V extends AnyMethodValidate = MethodValidate,
-  P extends SchemaWithJSON | undefined = SchemaWithJSON | undefined,
-> {
-  validate?: V;
-  handler: MethodHandler<V, P>;
-  meta?: H3RouteMeta;
-}
 
 /** The request shape seen by a method's handler, with body/query/params narrowed from schemas. */
 export type MethodRequest<
@@ -75,42 +67,31 @@ export type MethodRequest<
   routerParams: InferRouteParams<P>;
 };
 
+/** The coerced, validated request data exposed at `event.validated`. */
+export interface ValidatedData<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> {
+  query: InferMethodQuery<V>;
+  params: InferRouteParams<P>;
+  headers: InferMethodHeaders<V>;
+}
+
 /**
- * The `event` a method's handler receives. With a validated params schema, `context.params` is
- * required (`ValidatedH3Event`); without one, the plain `H3Event` keeps `params` optional.
+ * The `event` a method's handler receives. `event.validated` holds the coerced query/params/headers;
+ * with a validated params schema `event.context.params` is required, else it stays optional (h3 default).
+ * The validated body is read lazily via `event.req.json()`.
  */
 export type MethodEvent<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
-> = P extends SchemaWithJSON
+> = (P extends SchemaWithJSON
   ? ValidatedH3Event<MethodRequest<V, P>, InferOutput<P>>
-  : H3Event<MethodRequest<V, P>>;
+  : H3Event<MethodRequest<V, P>>) & {
+  validated: ValidatedData<V, P>;
+};
 
 /** Computed event-handler signature for a method, given its validate config + route params. */
 export type MethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> = (
   event: MethodEvent<V, P>,
 ) => InferMethodResponse<V> | Promise<InferMethodResponse<V>>;
-
-/**
- * The full route handler definition — route-free, with `params` hoisted to the route level
- * and per-method entries keyed by lowercase HTTP method.
- */
-export interface RouteHandlerDef<
-  P extends SchemaWithJSON | undefined = SchemaWithJSON | undefined,
-> {
-  params?: P;
-  middleware?: Middleware[];
-  meta?: H3RouteMeta;
-  get?: MethodDef<AnyMethodValidate, P>;
-  post?: MethodDef<AnyMethodValidate, P>;
-  put?: MethodDef<AnyMethodValidate, P>;
-  patch?: MethodDef<AnyMethodValidate, P>;
-  delete?: MethodDef<AnyMethodValidate, P>;
-  options?: MethodDef<AnyMethodValidate, P>;
-  head?: MethodDef<AnyMethodValidate, P>;
-  connect?: MethodDef<AnyMethodValidate, P>;
-  trace?: MethodDef<AnyMethodValidate, P>;
-}
 
 /**
  * Per-method def whose `handler` signature is derived from `V` (this method's validate) and `P`
@@ -121,6 +102,27 @@ export interface PerMethodDef<V extends AnyMethodValidate, P extends SchemaWithJ
   validate?: V;
   meta?: H3RouteMeta;
   handler: MethodHandler<V, P>;
+}
+
+/**
+ * The full route handler definition. `params` is hoisted to the route level; `head`/`options`
+ * additionally accept `false` to opt out of their auto behavior (auto-HEAD, auto-OPTIONS).
+ */
+export interface RouteHandlerDef<
+  P extends SchemaWithJSON | undefined = SchemaWithJSON | undefined,
+> {
+  params?: P;
+  middleware?: Middleware[];
+  meta?: H3RouteMeta;
+  get?: PerMethodDef<AnyMethodValidate, P>;
+  post?: PerMethodDef<AnyMethodValidate, P>;
+  put?: PerMethodDef<AnyMethodValidate, P>;
+  patch?: PerMethodDef<AnyMethodValidate, P>;
+  delete?: PerMethodDef<AnyMethodValidate, P>;
+  head?: PerMethodDef<AnyMethodValidate, P> | false;
+  options?: PerMethodDef<AnyMethodValidate, P> | false;
+  connect?: PerMethodDef<AnyMethodValidate, P>;
+  trace?: PerMethodDef<AnyMethodValidate, P>;
 }
 
 /**
@@ -147,8 +149,8 @@ export interface RouteHandlerInput<
   put?: PerMethodDef<Put, P>;
   post?: PerMethodDef<Post, P>;
   delete?: PerMethodDef<Del, P>;
-  options?: PerMethodDef<Options, P>;
-  head?: PerMethodDef<Head, P>;
+  options?: PerMethodDef<Options, P> | false;
+  head?: PerMethodDef<Head, P> | false;
   patch?: PerMethodDef<Patch, P>;
   trace?: PerMethodDef<Trace, P>;
   connect?: PerMethodDef<Connect, P>;
@@ -174,8 +176,8 @@ export interface ReconstructedRouteDef<
   put?: PerMethodDef<Put, P>;
   post?: PerMethodDef<Post, P>;
   delete?: PerMethodDef<Del, P>;
-  options?: PerMethodDef<Options, P>;
-  head?: PerMethodDef<Head, P>;
+  options?: PerMethodDef<Options, P> | false;
+  head?: PerMethodDef<Head, P> | false;
   patch?: PerMethodDef<Patch, P>;
   trace?: PerMethodDef<Trace, P>;
   connect?: PerMethodDef<Connect, P>;
@@ -193,34 +195,33 @@ export interface RouteHandlerOptions {
   onError?: OnValidateError;
   /** Override or opt out of the auto-registered error response schemas (400, 415, 500). */
   errors?: ErrorResponsesOption;
+  /** Decode route params with `decodeURIComponent` before validation (default off, h3 parity). */
+  decode?: boolean;
 }
 
 /**
- * The opaque object returned by `defineRouteHandler`.
- * `~routeDef` carries the typed definition (for documentation tooling and downstream type
- * extraction); `~handlers` holds the pre-built per-method h3 handlers for `bindRouteHandler`.
+ * A self-dispatching `EventHandlerWithFetch` returned by `defineRouteHandler`, carrying the typed
+ * `~routeDef` (for docs/type extraction) and `~options`. Mount it like any h3 handler.
  */
-export interface RouteHandler<Def = RouteHandlerDef> {
+export type RouteHandler<Def = RouteHandlerDef> = EventHandlerWithFetch & {
   readonly "~routeDef": Def;
-  readonly "~handlers": Partial<Record<RouteMethod, EventHandlerWithFetch>>;
   readonly "~options": RouteHandlerOptions;
-}
+};
 
 /** Minimal structural view of a `RouteHandler` that `bindRouteHandler` needs to wire routes. */
-export interface BindableRouteHandler {
+export type BindableRouteHandler = EventHandlerWithFetch & {
   readonly "~routeDef": { middleware?: Middleware[]; meta?: H3RouteMeta };
-  readonly "~handlers": Partial<Record<RouteMethod, EventHandlerWithFetch>>;
-}
+};
 
 /** A method def projected for documentation — validation + meta, handler omitted. */
 export type DocumentableMethodDef = Omit<
-  MethodDef<AnyMethodValidate, SchemaWithJSON | undefined>,
+  PerMethodDef<AnyMethodValidate, SchemaWithJSON | undefined>,
   "handler"
 >;
 
 /** A route def projected for documentation — params/meta + per-method validation, handlers omitted. */
 export type DocumentableRouteDef = Pick<RouteHandlerDef, "params" | "meta"> & {
-  [M in RouteMethod]?: DocumentableMethodDef;
+  [M in RouteMethod]?: DocumentableMethodDef | false;
 };
 
 /**
@@ -296,12 +297,21 @@ export const METHOD_KEYS: readonly RouteMethod[] = [
   "connect",
 ];
 
+/** Loose runtime view of a method entry (handler typed permissively for the dispatcher). */
+interface RuntimeMethod {
+  validate?: AnyMethodValidate;
+  meta?: H3RouteMeta;
+  handler: (...args: never[]) => unknown;
+}
+
+type RuntimeMethods = Partial<Record<string, RuntimeMethod | false>>;
+
 /**
- * Build a route handler from a method-keyed definition. Route-free — pair with `bindRouteHandler`
- * to mount on an `H3` instance, or default-export from a file-routed framework.
+ * Build a route handler from a method-keyed definition. Route-free — mount the returned
+ * `EventHandlerWithFetch` like any h3 handler (`app.all(route, h)`, a Nitro file, etc.); it
+ * dispatches on the request method internally and carries `~routeDef`/`~options` for docs.
  *
- * Each method's `handler` receives an `event` typed from that method's own `validate` schemas
- * and the route-level `params`.
+ * Each method's `handler` receives an `event` typed from its own `validate` schemas + route `params`.
  */
 export function defineRouteHandler<
   P extends SchemaWithJSON | undefined = undefined,
@@ -320,26 +330,25 @@ export function defineRouteHandler<
 ): RouteHandler<
   ReconstructedRouteDef<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
 > {
-  const handlers: Partial<Record<RouteMethod, EventHandlerWithFetch>> = {};
-  const shared = { params: def.params, meta: def.meta };
-
-  if (def.get) handlers.get = buildMethodHandler(def.get, shared, options);
-  if (def.put) handlers.put = buildMethodHandler(def.put, shared, options);
-  if (def.post) handlers.post = buildMethodHandler(def.post, shared, options);
-  if (def.delete) handlers.delete = buildMethodHandler(def.delete, shared, options);
-  if (def.options) handlers.options = buildMethodHandler(def.options, shared, options);
-  if (def.head) handlers.head = buildMethodHandler(def.head, shared, options);
-  if (def.patch) handlers.patch = buildMethodHandler(def.patch, shared, options);
-  if (def.trace) handlers.trace = buildMethodHandler(def.trace, shared, options);
-  if (def.connect) handlers.connect = buildMethodHandler(def.connect, shared, options);
-
-  return { "~routeDef": def, "~handlers": handlers, "~options": options };
+  const methods: RuntimeMethods = {
+    get: def.get,
+    put: def.put,
+    post: def.post,
+    delete: def.delete,
+    options: def.options,
+    head: def.head,
+    patch: def.patch,
+    trace: def.trace,
+    connect: def.connect,
+  };
+  const allow = computeAllow(methods);
+  const dispatcher = makeDispatcher(def.params, methods, allow, options, def.meta);
+  return Object.assign(dispatcher, { "~routeDef": def, "~options": options });
 }
 
 /**
- * Bind a previously-defined `RouteHandler` to a concrete route on an `H3` instance.
- * Each declared method is registered via `h3.on(method, route, ...)` with route-level
- * middleware and meta applied.
+ * Bind a `defineRouteHandler` result to a route on an `H3` instance and register it for OpenAPI.
+ * The handler self-dispatches methods, so a single `h3.all(route, handler)` covers them all.
  */
 export function bindRouteHandler(
   h3: H3,
@@ -347,57 +356,115 @@ export function bindRouteHandler(
 ): void {
   const { route, handler } = options;
   const { middleware, meta } = handler["~routeDef"];
-
-  for (const method of METHOD_KEYS) {
-    const h3Handler = handler["~handlers"][method];
-    if (!h3Handler) continue;
-    h3.on(method, route, h3Handler, { middleware, meta });
-  }
+  h3.all(route, handler, { middleware, meta });
 
   const registry = getRegistry(h3);
   if (registry) addRoute(registry, { route, handler });
 }
 
-function buildMethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined>(
-  methodDef: PerMethodDef<V, P>,
-  shared: { params: P; meta: H3RouteMeta | undefined },
+function makeDispatcher(
+  params: SchemaWithJSON | undefined,
+  methods: RuntimeMethods,
+  allow: string,
   options: RouteHandlerOptions,
+  meta: H3RouteMeta | undefined,
 ): EventHandlerWithFetch {
-  const params = shared.params;
-  const validate = methodDef.validate;
-  const onError = options.onError;
-  const meta = methodDef.meta ?? shared.meta;
-
   return defineHandler({
     meta,
     handler: async (event: H3Event) => {
-      if (params) {
-        Reflect.set(
-          event.context,
-          "params",
-          validateParams(event.context.params, params, { onError }),
-        );
+      const method = event.req.method.toUpperCase();
+      let entry = methods[method.toLowerCase()];
+      let headRequest = false;
+
+      if (method === "HEAD" && !isRuntimeMethod(entry)) {
+        if (entry === false || !isRuntimeMethod(methods.get)) return methodNotAllowed(allow);
+        entry = methods.get;
+        headRequest = true;
       }
-      if (validate?.headers) {
-        validateHeaders(event.req, validate.headers, { onError });
+
+      if (method === "OPTIONS" && !isRuntimeMethod(entry)) {
+        if (entry === false) return methodNotAllowed(allow);
+        event.res.headers.set("Allow", allow);
+        event.res.status = 204;
+        return null;
       }
-      if (validate?.query) {
-        validateQuery(event.url, validate.query, { onError });
-      }
-      if (validate?.body) {
-        Reflect.set(event, "req", validateBody(event.req, validate.body, { onError }));
-      }
+
+      if (!isRuntimeMethod(entry)) return methodNotAllowed(allow);
+
+      const validated = await runRequestValidation(event, params, entry.validate, options);
+      Reflect.set(event, "validated", validated);
 
       // @ts-expect-error: the event is request-validated at this point; its static type narrows
-      // context.params and req.body beyond what h3's base H3Event proves at this call site.
-      const result = await methodDef.handler(event);
+      // context.params, req.body and `validated` beyond what h3's base H3Event proves here.
+      const result = await entry.handler(event);
 
-      if (validate?.response) {
-        return runResponseValidation(result, validate.response, event.res.status, onError);
-      }
-      return result;
+      const response = entry.validate?.response
+        ? await runResponseValidation(
+            result,
+            entry.validate.response,
+            event.res.status,
+            options.onError,
+          )
+        : result;
+
+      // HEAD: the GET path ran for side effects/headers; the body is omitted.
+      return headRequest ? null : response;
     },
   });
+}
+
+async function runRequestValidation(
+  event: H3Event,
+  params: SchemaWithJSON | undefined,
+  validate: AnyMethodValidate | undefined,
+  options: RouteHandlerOptions,
+): Promise<Record<string, unknown>> {
+  const onError = options.onError;
+
+  let resolvedParams: unknown;
+  if (params) {
+    resolvedParams = await validateParams(event, params, { decode: options.decode, onError });
+    Reflect.set(event.context, "params", resolvedParams);
+  } else {
+    resolvedParams = event.context.params ?? {};
+  }
+
+  const query = validate?.query
+    ? await validateQuery(event, validate.query, { onError })
+    : getQuery(event);
+
+  const headers = validate?.headers
+    ? await validateHeaders(event, validate.headers, { onError })
+    : Object.fromEntries(event.req.headers.entries());
+
+  if (validate?.body || validate?.stream) {
+    const req = validateBody(
+      event.req,
+      { body: validate.body, stream: validate.stream },
+      { onError },
+    );
+    Reflect.set(event, "req", req);
+  }
+
+  return { query, params: resolvedParams, headers };
+}
+
+function isRuntimeMethod(entry: RuntimeMethod | false | undefined): entry is RuntimeMethod {
+  return typeof entry === "object" && entry !== null;
+}
+
+function computeAllow(methods: RuntimeMethods): string {
+  const allowed = new Set<string>();
+  for (const method of METHOD_KEYS) {
+    if (isRuntimeMethod(methods[method])) allowed.add(method.toUpperCase());
+  }
+  if (allowed.has("GET") && methods.head !== false) allowed.add("HEAD");
+  if (methods.options !== false) allowed.add("OPTIONS");
+  return [...allowed].join(", ");
+}
+
+function methodNotAllowed(allow: string): never {
+  throw new HTTPError({ status: 405, statusText: "Method Not Allowed", headers: { Allow: allow } });
 }
 
 function runResponseValidation(
@@ -408,9 +475,7 @@ function runResponseValidation(
 ): Promise<unknown> | unknown {
   const schema = resolveResponseSchema(response, status);
   if (!schema) return result;
-  return validateResponse(result, schema, {
-    onError: onError ? (r) => onError(r) : undefined,
-  });
+  return validateResponse(result, schema, { onError: onError ? (r) => onError(r) : undefined });
 }
 
 /**

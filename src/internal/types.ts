@@ -28,11 +28,11 @@ export type SchemaWithJSON<Input = unknown, Output = Input> =
   | (StandardSchemaV1<Input, Output> & StandardJSONSchemaV1<Input, Output>);
 
 /**
- * A map of `Content-Type` → schema. Used for content-type-aware body validation.
- * Keys are normalized media types (e.g. `application/json`, `multipart/form-data`).
+ * A map of `Content-Type` → validating schema. The matched content type's body is buffered and
+ * validated on read; non-declared content types are rejected with 415. Keys are normalized media types.
  */
-export type MediaTypeMap<S extends SchemaWithJSON = SchemaWithJSON> = {
-  [mediaType: string]: S;
+export type MediaTypeMap = {
+  [mediaType: string]: SchemaWithJSON;
 };
 
 /**
@@ -42,6 +42,26 @@ export type MediaTypeMap<S extends SchemaWithJSON = SchemaWithJSON> = {
  * - `MediaTypeMap`: strict — only declared content types are accepted, 415 on mismatch.
  */
 export type BodyValidation = SchemaWithJSON | MediaTypeMap;
+
+/**
+ * OpenAPI documentation for one streamed content type. A streamed body is never buffered or
+ * value-validated — the handler reads the raw `event.req.body` itself — so this only describes the
+ * payload for the spec:
+ * - `true`: undocumented; emits an empty media-type object (the content-type key identifies the payload).
+ * - `JSONSchemaDocument`: a raw JSON Schema, used verbatim (e.g. binary annotations, an NDJSON line shape).
+ * - `StandardJSONSchemaV1`: a schema's JSON Schema output.
+ */
+export type StreamDoc = true | JSONSchemaDocument | StandardJSONSchemaV1;
+
+/**
+ * A map of `Content-Type` → {@link StreamDoc} for raw, never-buffered request bodies. A streamed
+ * content type is accepted (no 415) and handed to the handler as `event.req.body`; its `StreamDoc`
+ * feeds OpenAPI only. Kept separate from {@link MediaTypeMap} so neither a validating schema nor a
+ * doc leaks into the other's media types.
+ */
+export type StreamMap = {
+  [mediaType: string]: StreamDoc;
+};
 
 /** Result of a custom validate function. */
 export type ValidateResult<T> = T | true | false | void;
@@ -124,6 +144,7 @@ export interface ExtractComponentsResult {
  */
 export interface RequestValidation {
   body?: BodyValidation;
+  stream?: StreamMap;
   headers?: SchemaWithJSON;
   query?: SchemaWithJSON;
   params?: SchemaWithJSON;

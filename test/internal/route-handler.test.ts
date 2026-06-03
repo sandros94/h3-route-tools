@@ -3,18 +3,20 @@ import { z } from "zod";
 
 import type {
   BindableRouteHandler,
+  DocumentableRouteHandler,
   InferMethodBody,
+  InferMethodHeaders,
   InferMethodQuery,
   InferMethodResponse,
   InferRouteParams,
-  MethodDef,
   MethodValidate,
+  PerMethodDef,
   ResponseValidation,
-  RouteHandler,
   RouteHandlerDef,
   RouteMethod,
 } from "../../src/internal/route-handler.ts";
 import { defineRouteHandler, bindRouteHandler } from "../../src/internal/route-handler.ts";
+import type { EventHandlerWithFetch } from "h3";
 
 describe("RouteMethod", () => {
   it("is the lowercase HTTPMethod union", () => {
@@ -26,13 +28,13 @@ describe("RouteMethod", () => {
 
 describe("InferRouteParams", () => {
   it("resolves to the schema's output when params is set", () => {
-    type P = InferRouteParams<z.ZodObject<{ id: z.ZodString }>>;
-    expectTypeOf<P>().toEqualTypeOf<{ id: string }>();
+    expectTypeOf<InferRouteParams<z.ZodObject<{ id: z.ZodString }>>>().toEqualTypeOf<{
+      id: string;
+    }>();
   });
 
   it("defaults to Record<string, string> when params is undefined", () => {
-    type P = InferRouteParams<undefined>;
-    expectTypeOf<P>().toEqualTypeOf<Record<string, string>>();
+    expectTypeOf<InferRouteParams<undefined>>().toEqualTypeOf<Record<string, string>>();
   });
 });
 
@@ -51,8 +53,7 @@ describe("InferMethodBody", () => {
   });
 
   it("defaults to unknown when body is undefined", () => {
-    type V = MethodValidate;
-    expectTypeOf<InferMethodBody<V>>().toEqualTypeOf<unknown>();
+    expectTypeOf<InferMethodBody<MethodValidate>>().toEqualTypeOf<unknown>();
   });
 });
 
@@ -63,8 +64,17 @@ describe("InferMethodQuery", () => {
   });
 
   it("defaults to Partial<Record<string, string>>", () => {
-    type V = MethodValidate;
-    expectTypeOf<InferMethodQuery<V>>().toEqualTypeOf<Partial<Record<string, string>>>();
+    expectTypeOf<InferMethodQuery<MethodValidate>>().toEqualTypeOf<
+      Partial<Record<string, string>>
+    >();
+  });
+});
+
+describe("InferMethodHeaders", () => {
+  it("resolves to schema output, defaulting to Record<string, string>", () => {
+    type V = MethodValidate<undefined, z.ZodObject<{ "x-id": z.ZodString }>>;
+    expectTypeOf<InferMethodHeaders<V>>().toEqualTypeOf<{ "x-id": string }>();
+    expectTypeOf<InferMethodHeaders<MethodValidate>>().toEqualTypeOf<Record<string, string>>();
   });
 });
 
@@ -79,74 +89,54 @@ describe("InferMethodResponse", () => {
       undefined,
       undefined,
       undefined,
-      {
-        200: z.ZodObject<{ id: z.ZodString }>;
-        404: z.ZodObject<{ error: z.ZodString }>;
-      }
+      { 200: z.ZodObject<{ id: z.ZodString }>; 404: z.ZodObject<{ error: z.ZodString }> }
     >;
     expectTypeOf<InferMethodResponse<V>>().toEqualTypeOf<{ id: string } | { error: string }>();
   });
 
   it("defaults to unknown when response is undefined", () => {
-    type V = MethodValidate;
-    expectTypeOf<InferMethodResponse<V>>().toEqualTypeOf<unknown>();
+    expectTypeOf<InferMethodResponse<MethodValidate>>().toEqualTypeOf<unknown>();
   });
 });
 
 describe("ResponseValidation acceptance", () => {
-  it("accepts a bare schema", () => {
+  it("accepts a bare schema and a status-code map", () => {
     const bare: ResponseValidation = z.object({ id: z.string() });
+    const map: ResponseValidation = { 200: z.object({ id: z.string() }) };
     expectTypeOf(bare).toExtend<ResponseValidation>();
-  });
-
-  it("accepts a status-code map", () => {
-    const map: ResponseValidation = {
-      200: z.object({ id: z.string() }),
-      404: z.object({ error: z.string() }),
-    };
     expectTypeOf(map).toExtend<ResponseValidation>();
   });
 });
 
-describe("MethodDef handler signature", () => {
-  it("types event.context.params from route-level params schema", () => {
-    type Params = z.ZodObject<{ id: z.ZodString }>;
-    type MD = MethodDef<MethodValidate, Params>;
-
-    // The handler's event.context.params is typed as the params schema output
-    type Handler = MD["handler"];
-    type EventArg = Parameters<Handler>[0];
-    type ParamsType = NonNullable<EventArg["context"]["params"]>;
-    expectTypeOf<ParamsType>().toEqualTypeOf<{ id: string }>();
+describe("PerMethodDef handler signature", () => {
+  it("types event.context.params from the route-level params schema", () => {
+    type MD = PerMethodDef<MethodValidate, z.ZodObject<{ id: z.ZodString }>>;
+    type EventArg = Parameters<MD["handler"]>[0];
+    expectTypeOf<EventArg["context"]["params"]>().toEqualTypeOf<{ id: string }>();
   });
 
   it("types handler return as the inferred response output", () => {
     type V = MethodValidate<undefined, undefined, undefined, z.ZodObject<{ ok: z.ZodBoolean }>>;
-    type MD = MethodDef<V>;
-    type Return = ReturnType<MD["handler"]>;
+    type Return = ReturnType<PerMethodDef<V, undefined>["handler"]>;
     expectTypeOf<Return>().toEqualTypeOf<{ ok: boolean } | Promise<{ ok: boolean }>>();
   });
 });
 
 describe("RouteHandlerDef shape", () => {
-  it("accepts a method-keyed definition with route-level params", () => {
+  it("accepts a method-keyed definition with route-level params and head/options false", () => {
     const def: RouteHandlerDef = {
       params: z.object({ id: z.string() }),
-      get: {
-        validate: { query: z.object({ q: z.string() }) },
-        handler: () => ({}),
-      },
-      post: {
-        validate: { body: z.object({ name: z.string() }) },
-        handler: () => ({}),
-      },
+      get: { validate: { query: z.object({ q: z.string() }) }, handler: () => ({}) },
+      post: { validate: { body: z.object({ name: z.string() }) }, handler: () => ({}) },
+      head: false,
+      options: false,
     };
     expectTypeOf(def).toExtend<RouteHandlerDef>();
   });
 });
 
 describe("defineRouteHandler return shape", () => {
-  it("stamps ~routeDef with the route-level params and per-method validate", () => {
+  it("returns a callable EventHandlerWithFetch carrying ~routeDef and ~options", () => {
     const handler = defineRouteHandler({
       params: z.object({ id: z.string() }),
       post: {
@@ -154,16 +144,15 @@ describe("defineRouteHandler return shape", () => {
         handler: async (event) => await event.req.json(),
       },
     });
+    expectTypeOf(handler).toExtend<EventHandlerWithFetch>();
+    expectTypeOf(handler).toExtend<BindableRouteHandler>();
+    expectTypeOf(handler).toExtend<DocumentableRouteHandler>();
+
     type Def = (typeof handler)["~routeDef"];
     expectTypeOf<NonNullable<Def["params"]>>().toEqualTypeOf<z.ZodObject<{ id: z.ZodString }>>();
     expectTypeOf<NonNullable<NonNullable<Def["post"]>["validate"]>>().toExtend<{
       body: z.ZodObject<{ name: z.ZodString }>;
     }>();
-  });
-
-  it("exposes pre-built handlers map", () => {
-    type H = RouteHandler["~handlers"];
-    expectTypeOf<H>().toExtend<Partial<Record<RouteMethod, unknown>>>();
   });
 });
 
@@ -171,12 +160,10 @@ describe("bindRouteHandler signature", () => {
   it("takes the H3 instance and an options object with route + handler", () => {
     type Args = Parameters<typeof bindRouteHandler>;
     expectTypeOf<Args["length"]>().toEqualTypeOf<2>();
-    expectTypeOf<Args[1]>().toExtend<{ route: string; handler: BindableRouteHandler }>();
-  });
-
-  it("accepts a defineRouteHandler result as its handler", () => {
-    const handler = defineRouteHandler({ get: { handler: () => "ok" } });
-    expectTypeOf(handler).toExtend<BindableRouteHandler>();
+    expectTypeOf<Args[1]>().toExtend<{
+      route: string;
+      handler: BindableRouteHandler & DocumentableRouteHandler;
+    }>();
   });
 });
 
@@ -193,11 +180,18 @@ describe("defineRouteHandler end-to-end handler inference", () => {
     });
   });
 
-  it("types event.context.params as required when a params schema is validated", () => {
+  it("types event.validated.{query,params,headers} (coerced) and event.context.params", () => {
     defineRouteHandler({
       params: z.object({ id: z.coerce.number() }),
       get: {
+        validate: {
+          query: z.object({ limit: z.coerce.number() }),
+          headers: z.object({ "x-token": z.string() }),
+        },
         handler: (event) => {
+          expectTypeOf(event.validated.params).toEqualTypeOf<{ id: number }>();
+          expectTypeOf(event.validated.query).toEqualTypeOf<{ limit: number }>();
+          expectTypeOf(event.validated.headers).toEqualTypeOf<{ "x-token": string }>();
           expectTypeOf(event.context.params).toEqualTypeOf<{ id: number }>();
           return null;
         },
@@ -243,22 +237,7 @@ describe("defineRouteHandler end-to-end handler inference", () => {
     });
   });
 
-  it("each method infers independently within the same route", () => {
-    defineRouteHandler({
-      get: {
-        validate: { query: z.object({ q: z.string() }).loose() },
-        handler: (event) => {
-          expectTypeOf(event.url.searchParams.get("q")).toEqualTypeOf<string | null>();
-          return null;
-        },
-      },
-      post: {
-        validate: { body: z.object({ payload: z.string() }) },
-        handler: async (event) => {
-          expectTypeOf(await event.req.json()).toEqualTypeOf<{ payload: string }>();
-          return null;
-        },
-      },
-    });
+  it("accepts head: false / options: false", () => {
+    defineRouteHandler({ get: { handler: () => "ok" }, head: false, options: false });
   });
 });

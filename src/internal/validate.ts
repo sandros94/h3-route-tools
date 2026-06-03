@@ -1,5 +1,6 @@
-import { HTTPError } from "h3";
+import { HTTPError, getValidatedQuery, getValidatedRouterParams, type H3Event } from "h3";
 import type { ServerRequest } from "srvx";
+import type { ErrorDetails } from "h3";
 
 import {
   createUnsupportedMediaTypeError,
@@ -10,10 +11,12 @@ import {
 import { matchMediaType, PARSER_BY_MEDIA_TYPE, type ParserName } from "./media-type.ts";
 import type {
   BodyValidation,
+  FailureResult,
   InferOutput,
   OnValidateError,
   SchemaWithJSON,
   StandardSchemaV1,
+  StreamMap,
   ValidateFunction,
   ValidateOptions,
   ValidateResult,
@@ -67,112 +70,87 @@ export async function validateData<T>(
   }
 }
 
-/** Synchronous standard-schema validation. Throws if the schema returns a Promise. */
-export function syncValidate<Source extends string, Schema extends SchemaWithJSON>(
-  source: Source,
-  data: unknown,
-  schema: Schema,
-  options: ValidateOptions<Source> = {},
-): InferOutput<Schema> {
-  const result = schema["~standard"].validate(data);
-  if (result instanceof Promise) {
-    throw new TypeError(`Asynchronous validation is not supported for ${source}`);
-  }
-  if (result.issues) {
-    throw createValidationError(
-      options.onError?.({ _source: source, ...result }) || {
-        message: VALIDATION_FAILED,
-        issues: result.issues,
-      },
-    );
-  }
-  return result.value;
+/** Adapt our source-tagged `OnValidateError` to the `(result) => ErrorDetails` shape h3's accessors expect. */
+function resolveOnError(
+  source: string,
+  onError: OnValidateError | undefined,
+): (result: FailureResult) => ErrorDetails {
+  return (result) =>
+    onError?.({ _source: source, ...result }) || {
+      status: 400,
+      statusText: VALIDATION_FAILED,
+      message: VALIDATION_FAILED,
+      data: { issues: result.issues, message: VALIDATION_FAILED },
+    };
 }
 
-/** Validate path params synchronously; returns the parsed shape. */
+/** Validate route params via h3's accessor — eager, async, opt-in `decode` (default off, h3 parity). */
 export function validateParams<Schema extends SchemaWithJSON>(
-  params: Record<string, string> | undefined,
+  event: H3Event,
   schema: Schema,
-  options: ValidateOptions = {},
-): InferOutput<Schema> {
-  return syncValidate("params", params || {}, schema, options);
+  options: ValidateOptions & { decode?: boolean } = {},
+): Promise<InferOutput<Schema>> {
+  return getValidatedRouterParams(event, schema, {
+    decode: options.decode,
+    onError: resolveOnError("params", options.onError),
+  });
 }
 
-/**
- * Mutate `req.headers` in place with validated values.
- * Only string-valued entries are written back; non-string outputs are dropped from the headers map
- * (the typed value remains observable to the handler via the schema-inferred type).
- */
-export function validateHeaders<Schema extends SchemaWithJSON>(
-  req: ServerRequest,
-  schema: Schema,
-  options: ValidateOptions = {},
-): void {
-  const validated = syncValidate(
-    "headers",
-    Object.fromEntries(req.headers.entries()),
-    schema,
-    options,
-  );
-  writeStringEntries(validated, (k, v) => req.headers.set(k, v));
-}
-
-/**
- * Mutate `url.searchParams` in place with validated values.
- * Only string-valued entries are written back; non-string outputs are dropped from the URL
- * (the typed value remains observable to the handler via the schema-inferred type).
- */
+/** Validate query via h3's accessor — eager, async. */
 export function validateQuery<Schema extends SchemaWithJSON>(
-  url: URL,
+  event: H3Event,
   schema: Schema,
   options: ValidateOptions = {},
-): URL {
-  const validated = syncValidate(
-    "query",
-    Object.fromEntries(url.searchParams.entries()),
-    schema,
-    options,
-  );
-  writeStringEntries(validated, (k, v) => url.searchParams.set(k, v));
-  return url;
+): Promise<InferOutput<Schema>> {
+  return getValidatedQuery(event, schema, { onError: resolveOnError("query", options.onError) });
 }
 
-function writeStringEntries(value: unknown, set: (key: string, value: string) => void): void {
-  if (typeof value !== "object" || value === null) return;
-  for (const [key, raw] of Object.entries(value)) {
-    if (typeof raw === "string") set(key, raw);
-  }
+/** Validate request headers — eager, async; our own (h3 has no header accessor). Headers are strings. */
+export async function validateHeaders<Schema extends SchemaWithJSON>(
+  event: H3Event,
+  schema: Schema,
+  options: ValidateOptions = {},
+): Promise<InferOutput<Schema>> {
+  const headers = Object.fromEntries(event.req.headers.entries());
+  return validateData(headers, schema, {
+    onError: options.onError ? (r) => options.onError!({ _source: "headers", ...r }) : undefined,
+  });
 }
 
 /**
- * Wrap `req` with content-type-aware body validation.
- * - Bare schema: intercepts `.json()` only; other parsers pass through unvalidated.
- * - Media-type map: throws 415 immediately if `Content-Type` matches no declared key;
- *   otherwise intercepts the parser corresponding to the matched media type.
- *
- * Returns a (possibly proxied) `ServerRequest`. The caller (handler) consumes the body
- * through the appropriate parser method and receives validated, typed data.
+ * Wrap `req` with lazy, content-type-aware body validation — nothing is read here.
+ * - Bare schema `body` → a request whose `.json()` validates on read.
+ * - `body` media-type map → matches the `Content-Type`; a matched schema validates the parsed body on read.
+ * - `stream` media-type map → matched content types are never buffered; the raw request is returned and
+ *   the handler reads `event.req.body` itself.
+ * - Neither map matches the `Content-Type` → 415.
  */
 export function validateBody(
   req: ServerRequest,
-  body: BodyValidation,
+  validation: { body?: BodyValidation; stream?: StreamMap },
   options: ValidateOptions = {},
 ): ServerRequest {
-  if (isBareSchema(body)) {
+  const { body, stream } = validation;
+  if (body && isSchema(body)) {
     return wrapBareJSON(req, body, options);
   }
 
-  const declared = Object.keys(body);
   const incoming = req.headers.get("content-type");
-  const matched = matchMediaType(declared, { against: incoming });
+  const matched = matchMediaType([...keysOf(body), ...keysOf(stream)], { against: incoming });
   if (!matched) {
     throw createUnsupportedMediaTypeError(incoming);
   }
-  return wrapMatched(req, matched, body[matched]!, options);
+
+  const schema = body?.[matched];
+  return schema ? wrapMatched(req, matched, schema, options) : req;
 }
 
-function isBareSchema(body: BodyValidation): body is SchemaWithJSON {
-  return "~standard" in body;
+function keysOf(map: Record<string, unknown> | undefined): string[] {
+  return map ? Object.keys(map) : [];
+}
+
+function isSchema(value: object): value is SchemaWithJSON {
+  return "~standard" in value;
 }
 
 function wrapBareJSON(
