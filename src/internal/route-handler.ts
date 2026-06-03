@@ -4,7 +4,6 @@ import {
   type H3,
   type H3Event,
   type H3RouteMeta,
-  type HTTPMethod,
   type Middleware,
   defineHandler,
 } from "h3";
@@ -13,7 +12,9 @@ import type {
   BodyValidation,
   InferOutput,
   OnValidateError,
+  RouteMethod,
   SchemaWithJSON,
+  StatusCodeKey,
   ValidatedH3Event,
 } from "./types.ts";
 import {
@@ -23,12 +24,9 @@ import {
   validateQuery,
   validateResponse,
 } from "./validate.ts";
+import { addRoute, getRegistry } from "./registry.ts";
 
-/** Lowercase HTTP method keys, matching OpenAPI path-item conventions. */
-export type RouteMethod = Lowercase<HTTPMethod>;
-
-/** Status code key for response validation maps — numeric (`200`) or string (`"4XX"`, `"default"`). */
-export type StatusCodeKey = number | string;
+export type { RouteMethod, StatusCodeKey } from "./types.ts";
 
 /**
  * Response validation accepts two shapes:
@@ -183,15 +181,18 @@ export interface ReconstructedRouteDef<
   connect?: PerMethodDef<Connect, P>;
 }
 
+/**
+ * Controls auto-registered error response schemas (400, 415, 500).
+ * `false` disables auto-registration entirely; a partial map overrides the schema per status.
+ */
+export type ErrorResponsesOption = false | Partial<Record<StatusCodeKey, SchemaWithJSON>>;
+
 /** Options passed at definition time. */
 export interface RouteHandlerOptions {
   /** Customize the `HTTPError` details thrown on any validation failure. */
   onError?: OnValidateError;
-  /**
-   * Override or opt out of the auto-registered error response schemas (400, 415, 500).
-   * Pass `false` to disable auto-registration entirely; pass a partial map to override per-status.
-   */
-  errors?: false | Partial<Record<StatusCodeKey, SchemaWithJSON>>;
+  /** Override or opt out of the auto-registered error response schemas (400, 415, 500). */
+  errors?: ErrorResponsesOption;
 }
 
 /**
@@ -202,12 +203,33 @@ export interface RouteHandlerOptions {
 export interface RouteHandler<Def = RouteHandlerDef> {
   readonly "~routeDef": Def;
   readonly "~handlers": Partial<Record<RouteMethod, EventHandlerWithFetch>>;
+  readonly "~options": RouteHandlerOptions;
 }
 
 /** Minimal structural view of a `RouteHandler` that `bindRouteHandler` needs to wire routes. */
 export interface BindableRouteHandler {
   readonly "~routeDef": { middleware?: Middleware[]; meta?: H3RouteMeta };
   readonly "~handlers": Partial<Record<RouteMethod, EventHandlerWithFetch>>;
+}
+
+/** A method def projected for documentation — validation + meta, handler omitted. */
+export type DocumentableMethodDef = Omit<
+  MethodDef<AnyMethodValidate, SchemaWithJSON | undefined>,
+  "handler"
+>;
+
+/** A route def projected for documentation — params/meta + per-method validation, handlers omitted. */
+export type DocumentableRouteDef = Pick<RouteHandlerDef, "params" | "meta"> & {
+  [M in RouteMethod]?: DocumentableMethodDef;
+};
+
+/**
+ * Structural view of a `RouteHandler` carrying only what OpenAPI generation reads.
+ * Omitting the handler function avoids contravariance when widening concrete route handlers.
+ */
+export interface DocumentableRouteHandler {
+  readonly "~routeDef": DocumentableRouteDef;
+  readonly "~options"?: { errors?: ErrorResponsesOption };
 }
 
 // ─── Inference helpers ────────────────────────────────────────────────────────
@@ -262,7 +284,7 @@ export type InferMethodResponse<V extends AnyMethodValidate> = V extends { respo
 // ─── Public surface ───────────────────────────────────────────────────────────
 
 /** Every lowercase HTTP method key, in OpenAPI path-item order. */
-const METHOD_KEYS: readonly RouteMethod[] = [
+export const METHOD_KEYS: readonly RouteMethod[] = [
   "get",
   "put",
   "post",
@@ -311,7 +333,7 @@ export function defineRouteHandler<
   if (def.trace) handlers.trace = buildMethodHandler(def.trace, shared, options);
   if (def.connect) handlers.connect = buildMethodHandler(def.connect, shared, options);
 
-  return { "~routeDef": def, "~handlers": handlers };
+  return { "~routeDef": def, "~handlers": handlers, "~options": options };
 }
 
 /**
@@ -321,7 +343,7 @@ export function defineRouteHandler<
  */
 export function bindRouteHandler(
   h3: H3,
-  options: { route: string; handler: BindableRouteHandler },
+  options: { route: string; handler: BindableRouteHandler & DocumentableRouteHandler },
 ): void {
   const { route, handler } = options;
   const { middleware, meta } = handler["~routeDef"];
@@ -331,6 +353,9 @@ export function bindRouteHandler(
     if (!h3Handler) continue;
     h3.on(method, route, h3Handler, { middleware, meta });
   }
+
+  const registry = getRegistry(h3);
+  if (registry) addRoute(registry, { route, handler });
 }
 
 function buildMethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined>(

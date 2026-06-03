@@ -1,4 +1,4 @@
-import type { ErrorDetails, H3Event, EventHandlerRequest } from "h3";
+import type { ErrorDetails, H3Event, EventHandlerRequest, HTTPMethod } from "h3";
 import type {
   StandardSchemaV1,
   StandardJSONSchemaV1,
@@ -6,6 +6,12 @@ import type {
 } from "@standard-schema/spec";
 
 export type { StandardSchemaV1, StandardJSONSchemaV1, StandardTypedV1 };
+
+/** Lowercase HTTP method keys, matching OpenAPI path-item conventions. */
+export type RouteMethod = Lowercase<HTTPMethod>;
+
+/** Status code key for response maps — numeric (`200`) or string (`"4XX"`, `"default"`). */
+export type StatusCodeKey = number | string;
 
 export type InferInput<Schema extends StandardTypedV1> = StandardSchemaV1.InferInput<Schema>;
 export type InferOutput<Schema extends StandardTypedV1> = StandardSchemaV1.InferOutput<Schema>;
