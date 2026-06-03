@@ -3,6 +3,7 @@ import {
   type EventHandlerWithFetch,
   type H3,
   type H3Event,
+  type H3Plugin,
   type H3RouteMeta,
   type Middleware,
   HTTPError,
@@ -208,11 +209,6 @@ export type RouteHandler<Def = RouteHandlerDef> = EventHandlerWithFetch & {
   readonly "~options": RouteHandlerOptions;
 };
 
-/** Minimal structural view of a `RouteHandler` that `bindRouteHandler` needs to wire routes. */
-export type BindableRouteHandler = EventHandlerWithFetch & {
-  readonly "~routeDef": { middleware?: Middleware[]; meta?: H3RouteMeta };
-};
-
 /** A method def projected for documentation — validation + meta, handler omitted. */
 export type DocumentableMethodDef = Omit<
   PerMethodDef<AnyMethodValidate, SchemaWithJSON | undefined>,
@@ -347,19 +343,37 @@ export function defineRouteHandler<
 }
 
 /**
- * Bind a `defineRouteHandler` result to a route on an `H3` instance and register it for OpenAPI.
- * The handler self-dispatches methods, so a single `h3.all(route, handler)` covers them all.
+ * Route-aware sugar over {@link defineRouteHandler}: builds the self-dispatching handler, mounts it
+ * at `route` with a single `h3.all`, and registers it for OpenAPI emission when a registry is attached.
+ * Returns an `H3Plugin`, so it composes with `app.register(...)`. Shadows h3's single-method
+ * `defineRoute` as a multi-method superset (see [[project-positioning-upstream]]).
+ *
+ * Each method's `handler` receives an `event` typed from its own `validate` schemas + route `params`.
  */
-export function bindRouteHandler(
-  h3: H3,
-  options: { route: string; handler: BindableRouteHandler & DocumentableRouteHandler },
-): void {
-  const { route, handler } = options;
-  const { middleware, meta } = handler["~routeDef"];
-  h3.all(route, handler, { middleware, meta });
-
-  const registry = getRegistry(h3);
-  if (registry) addRoute(registry, { route, handler });
+export function defineRoute<
+  P extends SchemaWithJSON | undefined = undefined,
+  Get extends AnyMethodValidate = MethodValidate,
+  Put extends AnyMethodValidate = MethodValidate,
+  Post extends AnyMethodValidate = MethodValidate,
+  Del extends AnyMethodValidate = MethodValidate,
+  Options extends AnyMethodValidate = MethodValidate,
+  Head extends AnyMethodValidate = MethodValidate,
+  Patch extends AnyMethodValidate = MethodValidate,
+  Trace extends AnyMethodValidate = MethodValidate,
+  Connect extends AnyMethodValidate = MethodValidate,
+>(
+  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> & {
+    route: string;
+  },
+  options: RouteHandlerOptions = {},
+): H3Plugin {
+  const { route, ...rest } = def;
+  const handler = defineRouteHandler(rest, options);
+  return (h3: H3) => {
+    h3.all(route, handler, { middleware: def.middleware, meta: def.meta });
+    const registry = getRegistry(h3);
+    if (registry) addRoute(registry, { route, handler });
+  };
 }
 
 function makeDispatcher(

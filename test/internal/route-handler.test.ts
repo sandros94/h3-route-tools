@@ -2,7 +2,6 @@ import { describe, it, expectTypeOf } from "vitest";
 import { z } from "zod";
 
 import type {
-  BindableRouteHandler,
   DocumentableRouteHandler,
   InferMethodBody,
   InferMethodHeaders,
@@ -15,8 +14,8 @@ import type {
   RouteHandlerDef,
   RouteMethod,
 } from "../../src/internal/route-handler.ts";
-import { defineRouteHandler, bindRouteHandler } from "../../src/internal/route-handler.ts";
-import type { EventHandlerWithFetch } from "h3";
+import { defineRouteHandler, defineRoute } from "../../src/internal/route-handler.ts";
+import type { EventHandlerWithFetch, H3Plugin } from "h3";
 
 describe("RouteMethod", () => {
   it("is the lowercase HTTPMethod union", () => {
@@ -145,7 +144,6 @@ describe("defineRouteHandler return shape", () => {
       },
     });
     expectTypeOf(handler).toExtend<EventHandlerWithFetch>();
-    expectTypeOf(handler).toExtend<BindableRouteHandler>();
     expectTypeOf(handler).toExtend<DocumentableRouteHandler>();
 
     type Def = (typeof handler)["~routeDef"];
@@ -156,14 +154,30 @@ describe("defineRouteHandler return shape", () => {
   });
 });
 
-describe("bindRouteHandler signature", () => {
-  it("takes the H3 instance and an options object with route + handler", () => {
-    type Args = Parameters<typeof bindRouteHandler>;
-    expectTypeOf<Args["length"]>().toEqualTypeOf<2>();
-    expectTypeOf<Args[1]>().toExtend<{
-      route: string;
-      handler: BindableRouteHandler & DocumentableRouteHandler;
-    }>();
+describe("defineRoute signature", () => {
+  it("takes a route-bearing def and returns an H3Plugin", () => {
+    const plugin = defineRoute({ route: "/x", get: { handler: () => "x" } });
+    expectTypeOf(plugin).toExtend<H3Plugin>();
+  });
+
+  it("requires a route on the def", () => {
+    // @ts-expect-error: `route` is required by defineRoute.
+    defineRoute({ get: { handler: () => "x" } });
+  });
+
+  it("types each method handler's event from its own validate + route params", () => {
+    defineRoute({
+      route: "/items/:id",
+      params: z.object({ id: z.coerce.number() }),
+      post: {
+        validate: { body: z.object({ name: z.string() }) },
+        handler: async (event) => {
+          expectTypeOf(event.context.params.id).toEqualTypeOf<number>();
+          expectTypeOf(await event.req.json()).toEqualTypeOf<{ name: string }>();
+          return "ok";
+        },
+      },
+    });
   });
 });
 

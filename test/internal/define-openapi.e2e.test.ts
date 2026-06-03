@@ -3,7 +3,7 @@ import { H3 } from "h3";
 import { z } from "zod";
 
 import { defineOpenAPI } from "../../src/internal/define-openapi.ts";
-import { defineRouteHandler, bindRouteHandler } from "../../src/internal/route-handler.ts";
+import { defineRoute } from "../../src/internal/route-handler.ts";
 import { defineSchema } from "../../src/internal/define-schema.ts";
 import type { OpenAPIDocument } from "../../src/internal/openapi-types.ts";
 
@@ -38,13 +38,11 @@ describe("defineOpenAPI — e2e", () => {
 
   it("includes routes bound after the plugin is registered", async () => {
     app.register(defineOpenAPI({ info }));
-    app.register((h3) =>
-      bindRouteHandler(h3, {
+    app.register(
+      defineRoute({
         route: "/users/:id",
-        handler: defineRouteHandler({
-          params: z.object({ id: z.string() }),
-          get: { handler: () => ({}) },
-        }),
+        params: z.object({ id: z.string() }),
+        get: { handler: () => ({}) },
       }),
     );
 
@@ -59,24 +57,17 @@ describe("defineOpenAPI — e2e", () => {
     app.register(defineOpenAPI({ info }));
     expect((await fetchDoc()).paths).toEqual({});
 
-    app.register((h3) =>
-      bindRouteHandler(h3, {
-        route: "/late",
-        handler: defineRouteHandler({ get: { handler: () => "ok" } }),
-      }),
-    );
+    app.register(defineRoute({ route: "/late", get: { handler: () => "ok" } }));
     expect((await fetchDoc()).paths["/late"]).toBeDefined();
   });
 
   it("hoists $id schemas into components", async () => {
     const User = defineSchema("User", z.object({ id: z.string(), name: z.string() }));
     app.register(defineOpenAPI({ info }));
-    app.register((h3) =>
-      bindRouteHandler(h3, {
+    app.register(
+      defineRoute({
         route: "/users",
-        handler: defineRouteHandler({
-          post: { validate: { body: User }, handler: () => ({}) },
-        }),
+        post: { validate: { body: User }, handler: () => ({}) },
       }),
     );
 
@@ -89,15 +80,13 @@ describe("defineOpenAPI — e2e", () => {
 
   it("still serves alongside the validated routes it documents", async () => {
     app.register(defineOpenAPI({ info }));
-    app.register((h3) =>
-      bindRouteHandler(h3, {
+    app.register(
+      defineRoute({
         route: "/echo",
-        handler: defineRouteHandler({
-          post: {
-            validate: { body: z.object({ name: z.string() }) },
-            handler: async (event) => await event.req.json(),
-          },
-        }),
+        post: {
+          validate: { body: z.object({ name: z.string() }) },
+          handler: async (event) => await event.req.json(),
+        },
       }),
     );
 
@@ -120,10 +109,7 @@ describe("defineOpenAPI — e2e", () => {
   });
 
   it("does not register routes for docs when no plugin is mounted", async () => {
-    bindRouteHandler(app, {
-      route: "/no-docs",
-      handler: defineRouteHandler({ get: { handler: () => "ok" } }),
-    });
+    app.register(defineRoute({ route: "/no-docs", get: { handler: () => "ok" } }));
     expect((await app.request("/no-docs")).status).toBe(200);
   });
 
@@ -134,21 +120,11 @@ describe("defineOpenAPI — e2e", () => {
   it("serves independent documents for separate app instances", async () => {
     const a = new H3();
     a.register(defineOpenAPI({ info: { title: "Service A", version: "1.0.0" } }));
-    a.register((h3) =>
-      bindRouteHandler(h3, {
-        route: "/a-resource",
-        handler: defineRouteHandler({ get: { handler: () => "a" } }),
-      }),
-    );
+    a.register(defineRoute({ route: "/a-resource", get: { handler: () => "a" } }));
 
     const b = new H3();
     b.register(defineOpenAPI({ info: { title: "Service B", version: "2.0.0" } }));
-    b.register((h3) =>
-      bindRouteHandler(h3, {
-        route: "/b-resource",
-        handler: defineRouteHandler({ post: { handler: () => "b" } }),
-      }),
-    );
+    b.register(defineRoute({ route: "/b-resource", post: { handler: () => "b" } }));
 
     const docA: OpenAPIDocument = await (await a.request("/openapi.json")).json();
     const docB: OpenAPIDocument = await (await b.request("/openapi.json")).json();

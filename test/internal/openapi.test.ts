@@ -208,6 +208,32 @@ describe("toOpenAPIPathItem", () => {
     const item = toOpenAPIPathItem(handler);
     expect(item.post?.responses?.["400"]).toBeUndefined();
   });
+
+  it("does not emit operations for auto HEAD/OPTIONS", () => {
+    const item = toOpenAPIPathItem(defineRouteHandler({ get: { handler: () => "g" } }));
+    expect(item.get).toBeDefined();
+    expect(item.head).toBeUndefined();
+    expect(item.options).toBeUndefined();
+  });
+
+  it("does not emit operations for head: false / options: false", () => {
+    const item = toOpenAPIPathItem(
+      defineRouteHandler({ get: { handler: () => "g" }, head: false, options: false }),
+    );
+    expect(item.head).toBeUndefined();
+    expect(item.options).toBeUndefined();
+  });
+
+  it("emits an explicitly declared options operation", () => {
+    const item = toOpenAPIPathItem(
+      defineRouteHandler({
+        get: { handler: () => "g" },
+        options: { meta: { openapi: { summary: "Custom preflight" } }, handler: () => null },
+      }),
+    );
+    expect(item.options).toBeDefined();
+    expect(item.options?.summary).toBe("Custom preflight");
+  });
 });
 
 describe("buildOpenAPIDocument", () => {
