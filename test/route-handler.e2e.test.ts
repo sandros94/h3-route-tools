@@ -222,14 +222,8 @@ describe("defineRoute — e2e", () => {
       defineRoute({
         route: "/upload",
         post: {
-          validate: {
-            stream: {
-              "application/octet-stream": {
-                type: "string",
-                contentMediaType: "application/octet-stream",
-              },
-            },
-          },
+          // Raw binary upload: undocumented payload — the content-type key is all the spec needs.
+          stream: { body: { "application/octet-stream": true } },
           handler: async (event) => {
             expectTypeOf(event.req.body).toEqualTypeOf<ReadableStream<
               Uint8Array<ArrayBuffer>
@@ -245,6 +239,42 @@ describe("defineRoute — e2e", () => {
       body: "hello world",
     });
     expect(await res.json()).toEqual({ bytes: 11 });
+  });
+
+  // Streamed response: a status declared under stream.response is doc-only — passed through, never validated.
+  it("passes a streamed response through without validation", async () => {
+    app.register(
+      defineRoute({
+        route: "/events",
+        get: {
+          stream: { response: { 200: { "text/event-stream": true } } },
+          handler: () =>
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("data: hi\n\n"));
+                controller.close();
+              },
+            }),
+        },
+      }),
+    );
+    const res = await app.request("/events");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("data: hi");
+  });
+
+  it("throws 500 when a schema-validated status is answered with a stream (no silent drift)", async () => {
+    app.register(
+      defineRoute({
+        route: "/bad-stream",
+        get: {
+          validate: { response: z.object({ id: z.string() }) },
+          // @ts-expect-error: a ReadableStream can't satisfy the declared object response schema.
+          handler: () => new ReadableStream(),
+        },
+      }),
+    );
+    expect((await app.request("/bad-stream")).status).toBe(500);
   });
 
   it("exposes the typed def + options on the handler built by defineRouteHandler", () => {

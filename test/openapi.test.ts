@@ -74,34 +74,30 @@ describe("toOpenAPIOperation", () => {
     ]);
   });
 
-  it("emits an empty media-type object for an undocumented stream entry", () => {
-    const op = toOpenAPIOperation({ validate: { stream: { "application/octet-stream": true } } });
+  it("emits an empty media-type object for an undocumented request stream entry", () => {
+    const op = toOpenAPIOperation({ stream: { body: { "application/octet-stream": true } } });
     expect(op.requestBody?.content["application/octet-stream"]).toEqual({});
   });
 
-  it("emits the supplied JSON Schema for a documented stream entry", () => {
+  it("emits the supplied JSON Schema for a documented request stream entry", () => {
+    // NDJSON upload: the stream is raw (never buffered), but each line is a JSON record we can describe.
     const op = toOpenAPIOperation({
-      validate: {
-        stream: {
-          "application/octet-stream": {
-            type: "string",
-            contentMediaType: "application/octet-stream",
-          },
+      stream: {
+        body: {
+          "application/x-ndjson": { type: "object", properties: { id: { type: "string" } } },
         },
       },
     });
-    expect(op.requestBody?.content["application/octet-stream"]?.schema).toEqual({
-      type: "string",
-      contentMediaType: "application/octet-stream",
+    expect(op.requestBody?.content["application/x-ndjson"]?.schema).toEqual({
+      type: "object",
+      properties: { id: { type: "string" } },
     });
   });
 
   it("merges validated body and streamed content types in one requestBody", () => {
     const op = toOpenAPIOperation({
-      validate: {
-        body: { "application/json": z.object({ name: z.string() }) },
-        stream: { "application/octet-stream": true },
-      },
+      validate: { body: { "application/json": z.object({ name: z.string() }) } },
+      stream: { body: { "application/octet-stream": true } },
     });
     expect(Object.keys(op.requestBody?.content ?? {})).toEqual([
       "application/json",
@@ -109,9 +105,42 @@ describe("toOpenAPIOperation", () => {
     ]);
   });
 
-  it("auto-registers 415 for a stream slot", () => {
-    const op = toOpenAPIOperation({ validate: { stream: { "application/octet-stream": true } } });
+  it("auto-registers 415 for a request stream slot", () => {
+    const op = toOpenAPIOperation({ stream: { body: { "application/octet-stream": true } } });
     expect(op.responses?.["415"]).toBeDefined();
+  });
+
+  it("documents a streamed response under its status + media type", () => {
+    const op = toOpenAPIOperation({
+      stream: {
+        response: {
+          200: {
+            "text/event-stream": { type: "object", properties: { tick: { type: "number" } } },
+          },
+        },
+      },
+    });
+    expect(op.responses?.["200"]?.content?.["text/event-stream"]?.schema).toEqual({
+      type: "object",
+      properties: { tick: { type: "number" } },
+    });
+  });
+
+  it("merges a validated and a streamed content type under the same status", () => {
+    const op = toOpenAPIOperation({
+      validate: { response: { 200: z.object({ id: z.string() }) } },
+      stream: { response: { 200: { "text/event-stream": true } } },
+    });
+    const content = op.responses?.["200"]?.content ?? {};
+    expect(Object.keys(content)).toEqual(["application/json", "text/event-stream"]);
+    expect(content["text/event-stream"]).toEqual({});
+  });
+
+  it("does not auto-register a 500 for a doc-only streamed response", () => {
+    const op = toOpenAPIOperation({
+      stream: { response: { 200: { "text/event-stream": true } } },
+    });
+    expect(op.responses?.["500"]).toBeUndefined();
   });
 
   it("maps a bare response schema to a 200", () => {

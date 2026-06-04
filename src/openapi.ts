@@ -15,6 +15,7 @@ import {
   type DocumentableRouteHandler,
   type ErrorResponsesOption,
   METHOD_KEYS,
+  type ResponseStreamMap,
   type ResponseValidation,
 } from "./route-handler.ts";
 import { getStandardJSONSchema } from "./internal/schema.ts";
@@ -153,7 +154,8 @@ export function toOpenAPIOperation(
 ): OpenAPIOperation {
   const validate = method.validate;
   const body: BodyValidation | undefined = validate?.body;
-  const stream: StreamMap | undefined = validate?.stream;
+  const streamBody: StreamMap | undefined = method.stream?.body;
+  const streamResponse: ResponseStreamMap | undefined = method.stream?.response;
   const query: SchemaWithJSON | undefined = validate?.query;
   const headers: SchemaWithJSON | undefined = validate?.headers;
   const response: ResponseValidation | undefined = validate?.response;
@@ -165,18 +167,18 @@ export function toOpenAPIOperation(
   if (headers) parameters.push(...schemaToParameters(headers, { in: "header" }));
   if (parameters.length) operation.parameters = parameters;
 
-  if (body || stream) operation.requestBody = toRequestBody(body, stream);
+  if (body || streamBody) operation.requestBody = toRequestBody(body, streamBody);
 
   const autoErrors = computeAutoErrors({
     body,
-    stream,
+    streamBody,
     headers,
     query,
     response,
     hasRouteParams: options.hasRouteParams ?? false,
     errors: options.errors,
   });
-  const responses = toResponses(response, autoErrors);
+  const responses = toResponses(response, streamResponse, autoErrors);
   if (Object.keys(responses).length) operation.responses = responses;
 
   applyOperationMeta(operation, method.meta);
@@ -272,6 +274,7 @@ function isDocSchema(doc: StandardJSONSchemaV1 | JSONSchemaDocument): doc is Sta
 
 function toResponses(
   response: ResponseValidation | undefined,
+  streamResponse: ResponseStreamMap | undefined,
   autoErrors: Array<[string, StandardTypedV1]>,
 ): Record<string, OpenAPIResponse> {
   const responses: Record<string, OpenAPIResponse> = {};
@@ -283,6 +286,19 @@ function toResponses(
       for (const [code, schema] of Object.entries(response)) {
         responses[code] = toResponseObject(code, schema);
       }
+    }
+  }
+
+  // Streamed responses are doc-only; merge their media types into the status' content (alongside any
+  // validated `application/json` for the same status — a status may be content-negotiated).
+  if (streamResponse) {
+    for (const [code, streamMap] of Object.entries(streamResponse)) {
+      const res = responses[code] ?? { description: describeStatus(code), content: {} };
+      res.content ??= {};
+      for (const [mediaType, doc] of Object.entries(streamMap)) {
+        res.content[mediaType] = streamMediaType(doc);
+      }
+      responses[code] = res;
     }
   }
 
@@ -307,7 +323,7 @@ function toMediaType(schema: StandardTypedV1): OpenAPIMediaType {
 
 function computeAutoErrors(input: {
   body: BodyValidation | undefined;
-  stream: StreamMap | undefined;
+  streamBody: StreamMap | undefined;
   headers: SchemaWithJSON | undefined;
   query: SchemaWithJSON | undefined;
   response: ResponseValidation | undefined;
@@ -319,7 +335,7 @@ function computeAutoErrors(input: {
   const out: Array<[string, StandardTypedV1]> = [];
 
   const needs400 = input.hasRouteParams || !!input.body || !!input.headers || !!input.query;
-  const needs415 = (!!input.body && !isSchema(input.body)) || !!input.stream;
+  const needs415 = (!!input.body && !isSchema(input.body)) || !!input.streamBody;
   const needs500 = !!input.response;
 
   if (needs400) out.push(["400", overrides?.[400] ?? ValidationErrorSchema]);

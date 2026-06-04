@@ -114,14 +114,12 @@ describe("validateBody — streaming entries (never buffered)", () => {
   });
 
   it("returns the raw request for a documented stream entry", () => {
-    const req = makeRequest({ contentType: "application/octet-stream" });
+    // NDJSON: streamed raw, but each line is a describable JSON record.
+    const req = makeRequest({ contentType: "application/x-ndjson" });
     expect(
       validateBody(req, {
         stream: {
-          "application/octet-stream": {
-            type: "string",
-            contentMediaType: "application/octet-stream",
-          },
+          "application/x-ndjson": { type: "object", properties: { id: { type: "string" } } },
         },
       }),
     ).toBe(req);

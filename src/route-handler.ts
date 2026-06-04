@@ -39,7 +39,7 @@ export type { RouteMethod, StatusCodeKey } from "./internal/types.ts";
  */
 export type ResponseValidation = SchemaWithJSON | Record<StatusCodeKey, SchemaWithJSON>;
 
-/** Per-method request validation slots. */
+/** Per-method validation slots — everything here is value-validated. Raw streams live in {@link MethodStream}. */
 export interface MethodValidate<
   Body extends BodyValidation | undefined = undefined,
   Headers extends SchemaWithJSON | undefined = undefined,
@@ -47,11 +47,24 @@ export interface MethodValidate<
   Response extends ResponseValidation | undefined = undefined,
 > {
   body?: Body;
-  /** Raw, never-buffered content types read via `event.req.body`; doc-only, no value validation. */
-  stream?: StreamMap;
   headers?: Headers;
   query?: Query;
   response?: Response;
+}
+
+/** A map of status code → {@link StreamMap}, documenting raw streamed responses per status. */
+export type ResponseStreamMap = Record<StatusCodeKey, StreamMap>;
+
+/**
+ * Per-method raw-stream slots — doc-only, never value-validated (a stream can't be).
+ * - `body`: request content types read raw via `event.req.body`.
+ * - `response`: statuses the handler answers with a stream; documented, validation skipped.
+ *
+ * The counterpart to {@link MethodValidate}: `validate` is what gets checked, `stream` is what passes through.
+ */
+export interface MethodStream {
+  body?: StreamMap;
+  response?: ResponseStreamMap;
 }
 
 /** Loose constraint accepting any `MethodValidate` variant; used as a generic bound. */
@@ -101,6 +114,7 @@ export type MethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON 
  */
 export interface PerMethodDef<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> {
   validate?: V;
+  stream?: MethodStream;
   meta?: H3RouteMeta;
   handler: MethodHandler<V, P>;
 }
@@ -296,6 +310,7 @@ export const METHOD_KEYS: readonly RouteMethod[] = [
 /** Loose runtime view of a method entry (handler typed permissively for the dispatcher). */
 interface RuntimeMethod {
   validate?: AnyMethodValidate;
+  stream?: MethodStream;
   meta?: H3RouteMeta;
   handler: (...args: never[]) => unknown;
 }
@@ -405,21 +420,26 @@ function makeDispatcher(
 
       if (!isRuntimeMethod(entry)) return methodNotAllowed(allow);
 
-      const validated = await runRequestValidation(event, params, entry.validate, options);
+      const validated = await runRequestValidation(
+        event,
+        params,
+        entry.validate,
+        entry.stream,
+        options,
+      );
       Reflect.set(event, "validated", validated);
 
       // @ts-expect-error: the event is request-validated at this point; its static type narrows
       // context.params, req.body and `validated` beyond what h3's base H3Event proves here.
       const result = await entry.handler(event);
 
-      const response = entry.validate?.response
-        ? await runResponseValidation(
-            result,
-            entry.validate.response,
-            event.res.status,
-            options.onError,
-          )
-        : result;
+      const response = await runResponseValidation(
+        result,
+        entry.validate?.response,
+        entry.stream?.response,
+        event.res.status,
+        options.onError,
+      );
 
       // HEAD: the GET path ran for side effects/headers; the body is omitted.
       return headRequest ? null : response;
@@ -431,6 +451,7 @@ async function runRequestValidation(
   event: H3Event,
   params: SchemaWithJSON | undefined,
   validate: AnyMethodValidate | undefined,
+  stream: MethodStream | undefined,
   options: RouteHandlerOptions,
 ): Promise<Record<string, unknown>> {
   const onError = options.onError;
@@ -451,10 +472,10 @@ async function runRequestValidation(
     ? await validateHeaders(event, validate.headers, { onError })
     : Object.fromEntries(event.req.headers.entries());
 
-  if (validate?.body || validate?.stream) {
+  if (validate?.body || stream?.body) {
     const req = validateBody(
       event.req,
-      { body: validate.body, stream: validate.stream },
+      { body: validate?.body, stream: stream?.body },
       { onError },
     );
     Reflect.set(event, "req", req);
@@ -483,13 +504,38 @@ function methodNotAllowed(allow: string): never {
 
 function runResponseValidation(
   result: unknown,
-  response: ResponseValidation,
+  response: ResponseValidation | undefined,
+  streamResponse: ResponseStreamMap | undefined,
   status: number | undefined,
   onError: OnValidateError | undefined,
 ): Promise<unknown> | unknown {
-  const schema = resolveResponseSchema(response, status);
+  const code = status ?? 200;
+
+  // A status declared under `stream.response` is doc-only — never value-validated.
+  if (streamResponse && (streamResponse[code] ?? streamResponse[String(code)])) return result;
+
+  const schema = response ? resolveResponseSchema(response, status) : undefined;
   if (!schema) return result;
+
+  // The status is schema-validated but the handler streamed it — fail loud rather than drift.
+  if (isStreamLike(result)) {
+    throw new HTTPError({
+      status: 500,
+      statusText: "Internal Server Error",
+      message: `Response for status ${code} is schema-validated, but the handler returned a stream. Declare it under stream.response instead.`,
+    });
+  }
+
   return validateResponse(result, schema, { onError: onError ? (r) => onError(r) : undefined });
+}
+
+/** A streamed return value that cannot be value-validated: a web stream, a `Response`, or an async iterable. */
+function isStreamLike(value: unknown): boolean {
+  return (
+    value instanceof ReadableStream ||
+    value instanceof Response ||
+    (typeof value === "object" && value !== null && Symbol.asyncIterator in value)
+  );
 }
 
 /**
