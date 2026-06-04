@@ -28,7 +28,6 @@ import {
   validateQuery,
   validateResponse,
 } from "./internal/validate.ts";
-import { addRoute, getRegistry } from "./registry.ts";
 
 export type { RouteMethod, StatusCodeKey } from "./internal/types.ts";
 
@@ -358,10 +357,11 @@ export function defineRouteHandler<
 }
 
 /**
- * Route-aware sugar over {@link defineRouteHandler}: builds the self-dispatching handler, mounts it
- * at `route` with a single `h3.all`, and registers it for OpenAPI emission when a registry is attached.
- * Returns an `H3Plugin`, so it composes with `app.register(...)`. Shadows h3's single-method
- * `defineRoute` as a multi-method superset (see [[project-positioning-upstream]]).
+ * Route-aware sugar over {@link defineRouteHandler}: builds the self-dispatching handler and mounts it
+ * at `route` with a single `h3.all`. OpenAPI emission discovers it later by harvesting h3's route table
+ * (the handler carries `~routeDef`), so there is no separate registration step. Returns an `H3Plugin`,
+ * composes with `app.register(...)`. Shadows h3's single-method `defineRoute` as a multi-method superset
+ * (see [[project-positioning-upstream]]).
  *
  * Each method's `handler` receives an `event` typed from its own `validate` schemas + route `params`.
  */
@@ -385,9 +385,9 @@ export function defineRoute<
   const { route, ...rest } = def;
   const handler = defineRouteHandler(rest, options);
   return (h3: H3) => {
+    // The handler carries `~routeDef`; OpenAPI emission harvests it from h3's route table on demand,
+    // so no explicit registration step is needed.
     h3.all(route, handler, { middleware: def.middleware, meta: def.meta });
-    const registry = getRegistry(h3);
-    if (registry) addRoute(registry, { route, handler });
   };
 }
 

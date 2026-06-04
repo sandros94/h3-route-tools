@@ -34,8 +34,8 @@ export type {
   RegisteredRoute,
 } from "./openapi.ts";
 
-export { attachRegistry, getRegistry, addRoute } from "./registry.ts";
-export type { OpenAPIRegistry } from "./registry.ts";
+export { attachRegistry, getRegistry, getOpenAPIConfig, harvestRoutes } from "./registry.ts";
+export type { OpenAPIRegistry, OpenAPIConfig } from "./registry.ts";
 
 export {
   HTTPErrorSchema,

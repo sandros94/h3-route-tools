@@ -1,7 +1,7 @@
 import type { H3, H3Plugin } from "h3";
 
 import type { ErrorResponsesOption } from "./route-handler.ts";
-import { attachRegistry } from "./registry.ts";
+import { attachRegistry, harvestRoutes } from "./registry.ts";
 import { buildOpenAPIDocument, type OpenAPIInfo } from "./openapi.ts";
 
 /** Options for the OpenAPI plugin. `info` is required by the OpenAPI spec. */
@@ -14,8 +14,9 @@ export interface OpenAPIPluginOptions {
 }
 
 /**
- * H3 plugin that attaches an OpenAPI registry to the app and serves the generated document.
- * Register it before the routes whose definitions should appear in the document.
+ * H3 plugin that records the OpenAPI config on the app and serves the generated document.
+ * The document is built per request by harvesting the app's routes, so it reflects every route
+ * regardless of registration order.
  */
 export function defineOpenAPI(options: OpenAPIPluginOptions): H3Plugin {
   if (!options.info?.title || !options.info?.version) {
@@ -24,11 +25,12 @@ export function defineOpenAPI(options: OpenAPIPluginOptions): H3Plugin {
   const path = options.path ?? "/openapi.json";
 
   return (h3: H3) => {
-    const registry = attachRegistry(h3, { info: options.info });
+    attachRegistry(h3, { info: options.info, path, errors: options.errors });
+
     h3.get(path, () =>
       buildOpenAPIDocument({
-        info: registry.info,
-        routes: registry.routes,
+        info: options.info,
+        routes: harvestRoutes(h3),
         errors: options.errors,
       }),
     );
