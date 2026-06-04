@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { H3 } from "h3";
 import { z } from "zod";
 
-import { defineOpenAPI } from "../../src/internal/define-openapi.ts";
-import { defineRoute } from "../../src/internal/route-handler.ts";
-import { defineSchema } from "../../src/internal/define-schema.ts";
-import type { OpenAPIDocument } from "../../src/internal/openapi-types.ts";
+import { defineOpenAPI } from "../src/define-openapi.ts";
+import { defineRoute } from "../src/route-handler.ts";
+import { defineSchema } from "../src/define-schema.ts";
+import type { OpenAPIDocument } from "../src/openapi.ts";
 
 const info = { title: "Test API", version: "1.0.0" };
 

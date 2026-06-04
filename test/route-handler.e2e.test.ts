@@ -2,7 +2,7 @@ import { describe, it, expect, expectTypeOf, beforeEach } from "vitest";
 import { H3 } from "h3";
 import { z } from "zod";
 
-import { defineRouteHandler, defineRoute } from "../../src/internal/route-handler.ts";
+import { defineRouteHandler, defineRoute } from "../src/route-handler.ts";
 
 /** Counts bytes off the raw stream chunk-by-chunk — never buffers the whole body. */
 async function countBytes(body: ReadableStream<Uint8Array> | null): Promise<{ bytes: number }> {

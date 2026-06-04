@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 
-import { defineSchema } from "../../src/internal/define-schema.ts";
-import { getStandardJSONSchema, hasJSONSchema, readSchemaId } from "../../src/internal/schema.ts";
+import { defineSchema } from "../src/define-schema.ts";
+import { getStandardJSONSchema, hasJSONSchema, readSchemaId } from "../src/internal/schema.ts";
 
 describe("defineSchema", () => {
   const User = z.object({ id: z.string(), name: z.string() });

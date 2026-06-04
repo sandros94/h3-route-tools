@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { H3 } from "h3";
 
-import {
-  addRoute,
-  attachRegistry,
-  getRegistry,
-  type RegisteredRoute,
-} from "../../src/internal/registry.ts";
+import { addRoute, attachRegistry, getRegistry, type RegisteredRoute } from "../src/registry.ts";
 
 const info = { title: "Test API", version: "1.0.0" };
 

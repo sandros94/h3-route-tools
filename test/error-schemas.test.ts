@@ -4,8 +4,8 @@ import {
   HTTPErrorSchema,
   ValidationErrorSchema,
   UnsupportedMediaTypeSchema,
-} from "../../src/internal/error-schemas.ts";
-import { hasJSONSchema, getStandardJSONSchema, readSchemaId } from "../../src/internal/schema.ts";
+} from "../src/error-schemas.ts";
+import { hasJSONSchema, getStandardJSONSchema, readSchemaId } from "../src/internal/schema.ts";
 
 describe("error schemas — common shape", () => {
   const schemas = [

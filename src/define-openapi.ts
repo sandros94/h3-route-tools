@@ -1,9 +1,8 @@
 import type { H3, H3Plugin } from "h3";
 
-import type { OpenAPIInfo } from "./openapi-types.ts";
 import type { ErrorResponsesOption } from "./route-handler.ts";
 import { attachRegistry } from "./registry.ts";
-import { buildOpenAPIDocument } from "./openapi.ts";
+import { buildOpenAPIDocument, type OpenAPIInfo } from "./openapi.ts";
 
 /** Options for the OpenAPI plugin. `info` is required by the OpenAPI spec. */
 export interface OpenAPIPluginOptions {

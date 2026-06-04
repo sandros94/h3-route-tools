@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 
-import { defineRouteHandler } from "../../src/internal/route-handler.ts";
-import { defineSchema } from "../../src/internal/define-schema.ts";
-import type { RegisteredRoute } from "../../src/internal/registry.ts";
+import { defineRouteHandler } from "../src/route-handler.ts";
+import { defineSchema } from "../src/define-schema.ts";
+import type { RegisteredRoute } from "../src/registry.ts";
 import {
   buildOpenAPIDocument,
   schemaToParameters,
   toOpenAPIOperation,
   toOpenAPIPath,
   toOpenAPIPathItem,
-} from "../../src/internal/openapi.ts";
+} from "../src/openapi.ts";
 
 const info = { title: "Test API", version: "1.0.0" };
 

@@ -1,13 +1,8 @@
 import type { H3 } from "h3";
 
-import type { DocumentableRouteHandler } from "./route-handler.ts";
-import type { OpenAPIInfo } from "./openapi-types.ts";
+import type { OpenAPIInfo, RegisteredRoute } from "./openapi.ts";
 
-/** A route binding collected for documentation: its path plus the route handler that serves it. */
-export interface RegisteredRoute {
-  route: string;
-  handler: DocumentableRouteHandler;
-}
+export type { RegisteredRoute } from "./openapi.ts";
 
 /**
  * Accumulation state for OpenAPI emission, attached to an `H3` instance.

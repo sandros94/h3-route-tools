@@ -3,7 +3,7 @@ import type {
   StandardJSONSchemaV1,
   UnsupportedMediaTypePayload,
   ValidationErrorPayload,
-} from "./types.ts";
+} from "./internal/types.ts";
 
 const VENDOR = "h3-typed-routes";
 

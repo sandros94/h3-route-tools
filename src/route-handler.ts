@@ -20,17 +20,17 @@ import type {
   StatusCodeKey,
   StreamMap,
   ValidatedH3Event,
-} from "./types.ts";
+} from "./internal/types.ts";
 import {
   validateBody,
   validateHeaders,
   validateParams,
   validateQuery,
   validateResponse,
-} from "./validate.ts";
+} from "./internal/validate.ts";
 import { addRoute, getRegistry } from "./registry.ts";
 
-export type { RouteMethod, StatusCodeKey } from "./types.ts";
+export type { RouteMethod, StatusCodeKey } from "./internal/types.ts";
 
 /**
  * Response validation accepts two shapes:

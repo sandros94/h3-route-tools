@@ -13,8 +13,8 @@ import type {
   ResponseValidation,
   RouteHandlerDef,
   RouteMethod,
-} from "../../src/internal/route-handler.ts";
-import { defineRouteHandler, defineRoute } from "../../src/internal/route-handler.ts";
+} from "../src/route-handler.ts";
+import { defineRouteHandler, defineRoute } from "../src/route-handler.ts";
 import type { EventHandlerWithFetch, H3Plugin } from "h3";
 
 describe("RouteMethod", () => {
