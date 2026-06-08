@@ -13,7 +13,13 @@ export type {
   DocumentableMethodDef,
   RouteMethod,
   StatusCodeKey,
+  RoutePlugin,
+  RouteRecord,
+  Endpoint,
+  FetchableMethod,
 } from "./route-handler.ts";
+
+export type { InferRouteTypes, InferRoutes } from "./routes.ts";
 
 export { defineSchema } from "./define-schema.ts";
 

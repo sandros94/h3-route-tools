@@ -13,6 +13,7 @@ import {
 
 import type {
   BodyValidation,
+  InferInput,
   InferOutput,
   OnValidateError,
   RouteMethod,
@@ -244,38 +245,65 @@ export interface DocumentableRouteHandler {
 
 // ─── Inference helpers ────────────────────────────────────────────────────────
 
-/** Resolve route params output type: schema's inferred output, else default `Record<string, string>`. */
-export type InferRouteParams<P extends SchemaWithJSON | undefined> = P extends SchemaWithJSON
-  ? InferOutput<P>
-  : Record<string, string>;
+/**
+ * Inference direction: a schema's accepted `input` (what a caller sends) vs its validated `output`
+ * (what a handler receives). Handlers read output; the typed fetcher sends input.
+ */
+type Direction = "input" | "output";
+type InferDir<S extends SchemaWithJSON, D extends Direction> = D extends "input"
+  ? InferInput<S>
+  : InferOutput<S>;
+
+/** Resolve route params for direction `D`: the schema's inferred type, else default `Record<string, string>`. */
+type InferRouteParamsDir<
+  P extends SchemaWithJSON | undefined,
+  D extends Direction,
+> = P extends SchemaWithJSON ? InferDir<P, D> : Record<string, string>;
+/** Route params as seen by a handler (validated output). */
+export type InferRouteParams<P extends SchemaWithJSON | undefined> = InferRouteParamsDir<
+  P,
+  "output"
+>;
 
 /**
- * Resolve method body type given its `validate.body`:
- * - bare schema → its inferred output
- * - media-type map → union of all per-media-type outputs
+ * Resolve method body type for direction `D` given its `validate.body`:
+ * - bare schema → its inferred type
+ * - media-type map → union of all per-media-type types
  * - absent → `unknown`
  */
-export type InferMethodBody<V extends AnyMethodValidate> = V extends { body?: infer B }
+type InferMethodBodyDir<V extends AnyMethodValidate, D extends Direction> = V extends {
+  body?: infer B;
+}
   ? [B] extends [SchemaWithJSON]
-    ? InferOutput<B>
+    ? InferDir<B, D>
     : B extends Record<string, SchemaWithJSON>
-      ? { [K in keyof B]: InferOutput<B[K]> }[keyof B]
+      ? { [K in keyof B]: InferDir<B[K], D> }[keyof B]
       : unknown
   : unknown;
+/** Method body as seen by a handler (validated output). */
+export type InferMethodBody<V extends AnyMethodValidate> = InferMethodBodyDir<V, "output">;
 
-/** Resolve method query output type, defaulting to `Partial<Record<string, string>>`. */
-export type InferMethodQuery<V extends AnyMethodValidate> = V extends { query?: infer Q }
+/** Resolve method query type for direction `D`, defaulting to `Partial<Record<string, string>>`. */
+type InferMethodQueryDir<V extends AnyMethodValidate, D extends Direction> = V extends {
+  query?: infer Q;
+}
   ? [Q] extends [SchemaWithJSON]
-    ? InferOutput<Q>
+    ? InferDir<Q, D>
     : Partial<Record<string, string>>
   : Partial<Record<string, string>>;
+/** Method query as seen by a handler (validated output). */
+export type InferMethodQuery<V extends AnyMethodValidate> = InferMethodQueryDir<V, "output">;
 
-/** Resolve method headers output type, defaulting to `Record<string, string>`. */
-export type InferMethodHeaders<V extends AnyMethodValidate> = V extends { headers?: infer H }
+/** Resolve method headers type for direction `D`, defaulting to `Record<string, string>`. */
+type InferMethodHeadersDir<V extends AnyMethodValidate, D extends Direction> = V extends {
+  headers?: infer H;
+}
   ? [H] extends [SchemaWithJSON]
-    ? InferOutput<H>
+    ? InferDir<H, D>
     : Record<string, string>
   : Record<string, string>;
+/** Method headers as seen by a handler (validated output). */
+export type InferMethodHeaders<V extends AnyMethodValidate> = InferMethodHeadersDir<V, "output">;
 
 /**
  * Resolve method response type:
@@ -351,21 +379,105 @@ export function defineRouteHandler<
     trace: def.trace,
     connect: def.connect,
   };
-  const allow = computeAllow(methods);
-  const dispatcher = makeDispatcher(def.params, methods, allow, options, def.meta);
+  const dispatcher = makeDispatcher(def.params, methods, options, def.meta);
   return Object.assign(dispatcher, { "~routeDef": def, "~options": options });
 }
 
+/** HTTP methods exposed in the typed route surface. Protocol methods (head/options/trace/connect) are
+ * auto-handled and intentionally excluded from the fetcher type. */
+export type FetchableMethod = "get" | "post" | "put" | "patch" | "delete";
+
 /**
- * Route-aware sugar over {@link defineRouteHandler}: builds the self-dispatching handler and mounts it
- * at `route` with a single `h3.all`. OpenAPI emission discovers it later by harvesting h3's route table
- * (the handler carries `~routeDef`), so there is no separate registration step. Returns an `H3Plugin`,
- * composes with `app.register(...)`. Shadows h3's single-method `defineRoute` as a multi-method superset
- * (see [[project-positioning-upstream]]).
- *
- * Each method's `handler` receives an `event` typed from its own `validate` schemas + route `params`.
+ * The typed surface of one method, from a caller's perspective:
+ * - `body` → schema **input** (the raw payload the caller sends, pre-transform).
+ * - `params`/`query`/`headers` → schema **output** (logical values the caller supplies; the fetcher
+ *   serializes them to strings and the server coerces back — input would be the useless pre-coerce type).
+ * - `response` → schema **output** (what the caller receives).
+ */
+export interface Endpoint<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> {
+  params: InferRouteParams<P>;
+  query: InferMethodQuery<V>;
+  headers: InferMethodHeaders<V>;
+  body: InferMethodBodyDir<V, "input">;
+  response: InferMethodResponse<V>;
+}
+
+/** Per-method validate types keyed by method, used to extract each declared method's {@link Endpoint}. */
+interface MethodValidates<
+  Get extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Trace extends AnyMethodValidate,
+  Connect extends AnyMethodValidate,
+> {
+  get: Get;
+  put: Put;
+  post: Post;
+  delete: Del;
+  options: Options;
+  head: Head;
+  patch: Patch;
+  trace: Trace;
+  connect: Connect;
+}
+
+/**
+ * The typed-routes contribution of a single `defineRoute`: `{ [route]: { [declaredMethod]: Endpoint } }`.
+ * `K` is the declared-method key union (captured via `& Record<K, unknown>`); only methods actually
+ * declared *and* {@link FetchableMethod fetchable} appear — no phantom entries.
+ */
+export type RouteRecord<
+  R extends string,
+  K extends string,
+  P extends SchemaWithJSON | undefined,
+  Get extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Trace extends AnyMethodValidate,
+  Connect extends AnyMethodValidate,
+> = {
+  [Route in R]: {
+    [M in FetchableMethod as M extends K ? M : never]: Endpoint<
+      MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
+      P
+    >;
+  };
+};
+
+/**
+ * The required runtime brand that nominally marks a value as a typed route plugin. It's a real value
+ * (set by `defineRoute`), so constraints like `InferRoutes` reject anything that isn't a route plugin.
+ */
+export interface RoutePluginBrand {
+  readonly "~routePlugin": true;
+}
+
+/**
+ * The `H3Plugin` returned by `defineRoute`: a real plugin, a required {@link RoutePluginBrand} (so it's
+ * nominally a route plugin), and a **phantom** `~route` stamp carrying the route's typed
+ * {@link RouteRecord} contribution — type-only, never present at runtime. `InferRouteTypes` recovers it.
+ * Composes with `app.register(...)` like any plugin.
+ */
+export type RoutePlugin<Routes = unknown> = H3Plugin &
+  RoutePluginBrand & { readonly "~route"?: Routes };
+
+/**
+ * Route-aware sugar over {@link defineRouteHandler}: builds the handler and mounts it (each declared
+ * method as a dedicated `h3.on` + a catch-all `h3.all`, so methods on a shared path compose). Returns
+ * a {@link RoutePlugin} for `app.register(...)`. Each `handler`'s `event` is typed from its own
+ * `validate` and route `params`.
  */
 export function defineRoute<
+  R extends string,
+  K extends string = never,
   P extends SchemaWithJSON | undefined = undefined,
   Get extends AnyMethodValidate = MethodValidate,
   Put extends AnyMethodValidate = MethodValidate,
@@ -378,23 +490,27 @@ export function defineRoute<
   Connect extends AnyMethodValidate = MethodValidate,
 >(
   def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> & {
-    route: string;
-  },
+    route: R;
+  } & Record<K, unknown>,
   options: RouteHandlerOptions = {},
-): H3Plugin {
+): RoutePlugin<RouteRecord<R, K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>> {
   const { route, ...rest } = def;
   const handler = defineRouteHandler(rest, options);
-  return (h3: H3) => {
-    // The handler carries `~routeDef`; OpenAPI emission harvests it from h3's route table on demand,
-    // so no explicit registration step is needed.
-    h3.all(route, handler, { middleware: def.middleware, meta: def.meta });
-  };
+  const brand: RoutePluginBrand = { "~routePlugin": true };
+  return Object.assign((h3: H3) => {
+    const opts = { middleware: def.middleware, meta: def.meta };
+    /* Each declared method is dedicated; the catch-all handles undeclared methods (405/Allow) and auto
+       HEAD/OPTIONS. Dedicated routes beat the catch-all, so methods on a shared path compose. */
+    for (const method of METHOD_KEYS) {
+      if (isRuntimeMethod(Reflect.get(rest, method))) h3.on(method, route, handler, opts);
+    }
+    h3.all(route, handler, opts);
+  }, brand);
 }
 
 function makeDispatcher(
   params: SchemaWithJSON | undefined,
   methods: RuntimeMethods,
-  allow: string,
   options: RouteHandlerOptions,
   meta: H3RouteMeta | undefined,
 ): EventHandlerWithFetch {
@@ -406,19 +522,21 @@ function makeDispatcher(
       let headRequest = false;
 
       if (method === "HEAD" && !isRuntimeMethod(entry)) {
-        if (entry === false || !isRuntimeMethod(methods.get)) return methodNotAllowed(allow);
+        if (entry === false || !isRuntimeMethod(methods.get)) {
+          return methodNotAllowed(computeAllow(event, methods));
+        }
         entry = methods.get;
         headRequest = true;
       }
 
       if (method === "OPTIONS" && !isRuntimeMethod(entry)) {
-        if (entry === false) return methodNotAllowed(allow);
-        event.res.headers.set("Allow", allow);
+        if (entry === false) return methodNotAllowed(computeAllow(event, methods));
+        event.res.headers.set("Allow", computeAllow(event, methods));
         event.res.status = 204;
         return null;
       }
 
-      if (!isRuntimeMethod(entry)) return methodNotAllowed(allow);
+      if (!isRuntimeMethod(entry)) return methodNotAllowed(computeAllow(event, methods));
 
       const validated = await runRequestValidation(
         event,
@@ -484,17 +602,39 @@ async function runRequestValidation(
   return { query, params: resolvedParams, headers };
 }
 
-function isRuntimeMethod(entry: RuntimeMethod | false | undefined): entry is RuntimeMethod {
+function isRuntimeMethod(entry: unknown): entry is RuntimeMethod {
   return typeof entry === "object" && entry !== null;
 }
 
-function computeAllow(methods: RuntimeMethods): string {
+/**
+ * Build the `Allow` header: the union of declared methods across every handler on the matched route,
+ * plus auto HEAD (when GET is present) and OPTIONS. Falls back to `ownMethods` if the route table is
+ * unreachable.
+ */
+function computeAllow(event: H3Event, ownMethods: RuntimeMethods): string {
   const allowed = new Set<string>();
-  for (const method of METHOD_KEYS) {
-    if (isRuntimeMethod(methods[method])) allowed.add(method.toUpperCase());
+  const route = event.context.matchedRoute?.route;
+  const table = event.app ? Reflect.get(event.app, "~routes") : undefined;
+  let harvested = false;
+
+  if (route && Array.isArray(table)) {
+    for (const entry of table) {
+      if (entry?.route !== route || typeof entry.handler !== "function") continue;
+      const def = Reflect.get(entry.handler, "~routeDef");
+      if (typeof def !== "object" || def === null) continue;
+      harvested = true;
+      for (const method of METHOD_KEYS) {
+        if (isRuntimeMethod(Reflect.get(def, method))) allowed.add(method.toUpperCase());
+      }
+    }
   }
-  if (allowed.has("GET") && methods.head !== false) allowed.add("HEAD");
-  if (methods.options !== false) allowed.add("OPTIONS");
+  if (!harvested) {
+    for (const method of METHOD_KEYS) {
+      if (isRuntimeMethod(ownMethods[method])) allowed.add(method.toUpperCase());
+    }
+  }
+  if (allowed.has("GET") && ownMethods.head !== false) allowed.add("HEAD");
+  if (ownMethods.options !== false) allowed.add("OPTIONS");
   return [...allowed].join(", ");
 }
 

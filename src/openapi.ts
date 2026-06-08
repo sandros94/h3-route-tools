@@ -395,8 +395,9 @@ function extractDocumentComponents(paths: Record<string, OpenAPIPathItem>): {
   return { components };
 }
 
+/** Merge two path items for the same path: different methods compose; a method in both is first-wins (`a`). */
 function mergePathItem(a: OpenAPIPathItem, b: OpenAPIPathItem): OpenAPIPathItem {
-  const merged: OpenAPIPathItem = { ...a, ...b };
+  const merged: OpenAPIPathItem = { ...b, ...a };
   const params = [...(a.parameters ?? []), ...(b.parameters ?? [])];
   if (params.length) merged.parameters = params;
   return merged;

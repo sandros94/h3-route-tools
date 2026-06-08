@@ -315,7 +315,7 @@ describe("buildOpenAPIDocument", () => {
     ).toEqual({ $ref: "#/components/schemas/ValidationError" });
   });
 
-  it("merges multiple bindings on the same path", () => {
+  it("composes different methods bound to the same path (mirrors runtime cross-module merge)", () => {
     const getH = defineRouteHandler({ get: { handler: () => "g" } });
     const postH = defineRouteHandler({ post: { handler: () => "p" } });
     const doc = buildOpenAPIDocument({
@@ -324,5 +324,27 @@ describe("buildOpenAPIDocument", () => {
     });
     expect(doc.paths["/x"]?.get).toBeDefined();
     expect(doc.paths["/x"]?.post).toBeDefined();
+  });
+
+  it("is first-wins when the same method is bound twice to a path", () => {
+    const first = defineRouteHandler({
+      get: {
+        validate: { response: z.object({ from: z.literal("first") }) },
+        handler: () => ({ from: "first" as const }),
+      },
+    });
+    const second = defineRouteHandler({
+      get: {
+        validate: { response: z.object({ from: z.literal("second") }) },
+        handler: () => ({ from: "second" as const }),
+      },
+    });
+    const doc = buildOpenAPIDocument({
+      info,
+      routes: routes({ route: "/x", handler: first }, { route: "/x", handler: second }),
+    });
+    // the first binding's GET (its 200 schema) wins
+    const schema = doc.paths["/x"]?.get?.responses?.["200"]?.content?.["application/json"]?.schema;
+    expect(schema).toMatchObject({ properties: { from: { const: "first" } } });
   });
 });

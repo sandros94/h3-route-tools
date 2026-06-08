@@ -27,7 +27,7 @@
     "dev": "pnpm -F playground dev",
     "dev:prepare": "obuild --stub && pnpm simple-git-hooks",
     "lint": "oxlint . && oxfmt --check .",
-    "fmt": "automd && oxlint --fix . && oxfmt .",
+    "fmt": "oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
     "release": "pnpm test && pnpm prepack && changelogen --release --push",
     "stub": "obuild --stub",

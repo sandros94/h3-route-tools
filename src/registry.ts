@@ -52,8 +52,16 @@ export function harvestRoutes(h3: H3): RegisteredRoute[] {
   const routes = Reflect.get(h3, ROUTES_KEY);
   if (!Array.isArray(routes)) return [];
   const out: RegisteredRoute[] = [];
+  // One `defineRoute` handler is registered under several methods (+ a catch-all), so it appears
+  // multiple times in the table — dedupe by handler identity to document each route once.
+  const seen = new Set<unknown>();
   for (const entry of routes) {
-    if (typeof entry?.route === "string" && isDocumentable(entry.handler)) {
+    if (
+      typeof entry?.route === "string" &&
+      isDocumentable(entry.handler) &&
+      !seen.has(entry.handler)
+    ) {
+      seen.add(entry.handler);
       out.push({ route: entry.route, handler: entry.handler });
     }
   }
