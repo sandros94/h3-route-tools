@@ -141,38 +141,11 @@ export interface RouteHandlerDef<
 }
 
 /**
- * The `def` parameter of `defineRouteHandler`, with one inferred validate type per method.
- * Each method generic flows into its own handler signature — no shared `Def`, which is what
- * lets per-method inference work through a single object literal.
+ * The `def` of `defineRouteHandler`, with one inferred validate type per method. Each method generic
+ * flows into its own handler signature — no shared `Def`, which is what lets per-method inference work
+ * through a single object literal. Also serves as the `~routeDef` stamp carried on the built handler.
  */
 export interface RouteHandlerInput<
-  P extends SchemaWithJSON | undefined,
-  Get extends AnyMethodValidate,
-  Put extends AnyMethodValidate,
-  Post extends AnyMethodValidate,
-  Del extends AnyMethodValidate,
-  Options extends AnyMethodValidate,
-  Head extends AnyMethodValidate,
-  Patch extends AnyMethodValidate,
-  Trace extends AnyMethodValidate,
-  Connect extends AnyMethodValidate,
-> {
-  params?: P;
-  middleware?: Middleware[];
-  meta?: H3RouteMeta;
-  get?: PerMethodDef<Get, P>;
-  put?: PerMethodDef<Put, P>;
-  post?: PerMethodDef<Post, P>;
-  delete?: PerMethodDef<Del, P>;
-  options?: PerMethodDef<Options, P> | false;
-  head?: PerMethodDef<Head, P> | false;
-  patch?: PerMethodDef<Patch, P>;
-  trace?: PerMethodDef<Trace, P>;
-  connect?: PerMethodDef<Connect, P>;
-}
-
-/** Reconstructed route def carried on the returned handler's `~routeDef` stamp. */
-export interface ReconstructedRouteDef<
   P extends SchemaWithJSON | undefined,
   Get extends AnyMethodValidate,
   Put extends AnyMethodValidate,
@@ -215,12 +188,17 @@ export interface RouteHandlerOptions {
 }
 
 /**
- * A self-dispatching `EventHandlerWithFetch` returned by `defineRouteHandler`, carrying the typed
- * `~routeDef` (for docs/type extraction) and `~options`. Mount it like any h3 handler.
+ * A self-dispatching `EventHandlerWithFetch` returned by `defineRouteHandler`, carrying the runtime
+ * `~routeDef`/`~options` plus a **type-only** `~inferMethods` stamp. Mount it like any h3 handler.
+ *
+ * `~inferMethods` is a phantom: never present at runtime, read only through `InferMethods<typeof h>`.
+ * Don't access it directly — it's optional purely so it can stay value-free, so a direct read is
+ * `Methods | undefined`. The `Infer*` utilities strip that.
  */
-export type RouteHandler<Def = RouteHandlerDef> = EventHandlerWithFetch & {
+export type RouteHandler<Def = RouteHandlerDef, Methods = unknown> = EventHandlerWithFetch & {
   readonly "~routeDef": Def;
   readonly "~options": RouteHandlerOptions;
+  readonly "~inferMethods"?: Methods;
 };
 
 /** A method def projected for documentation — validation + meta, handler omitted. */
@@ -352,6 +330,7 @@ type RuntimeMethods = Partial<Record<string, RuntimeMethod | false>>;
  * Each method's `handler` receives an `event` typed from its own `validate` schemas + route `params`.
  */
 export function defineRouteHandler<
+  K extends string = never,
   P extends SchemaWithJSON | undefined = undefined,
   Get extends AnyMethodValidate = MethodValidate,
   Put extends AnyMethodValidate = MethodValidate,
@@ -363,10 +342,12 @@ export function defineRouteHandler<
   Trace extends AnyMethodValidate = MethodValidate,
   Connect extends AnyMethodValidate = MethodValidate,
 >(
-  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
+  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> &
+    Record<K, unknown>,
   options: RouteHandlerOptions = {},
 ): RouteHandler<
-  ReconstructedRouteDef<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
+  RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
+  MethodsRecord<K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
 > {
   const methods: RuntimeMethods = {
     get: def.get,
@@ -426,9 +407,32 @@ interface MethodValidates<
 }
 
 /**
- * The typed-routes contribution of a single `defineRoute`: `{ [route]: { [declaredMethod]: Endpoint } }`.
- * `K` is the declared-method key union (captured via `& Record<K, unknown>`); only methods actually
- * declared *and* {@link FetchableMethod fetchable} appear — no phantom entries.
+ * The per-method `{ [declaredMethod]: Endpoint }` map of one route handler. `K` is the declared-method
+ * key union (captured via `& Record<K, unknown>`); only methods actually declared *and*
+ * {@link FetchableMethod fetchable} appear — no phantom entries.
+ */
+export type MethodsRecord<
+  K extends string,
+  P extends SchemaWithJSON | undefined,
+  Get extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Trace extends AnyMethodValidate,
+  Connect extends AnyMethodValidate,
+> = {
+  [M in FetchableMethod as M extends K ? M : never]: Endpoint<
+    MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
+    P
+  >;
+};
+
+/**
+ * The typed-routes contribution of a single `defineRoute`: `{ [route]: { [declaredMethod]: Endpoint } }`
+ * — the route literal keying a {@link MethodsRecord}.
  */
 export type RouteRecord<
   R extends string,
@@ -444,12 +448,7 @@ export type RouteRecord<
   Trace extends AnyMethodValidate,
   Connect extends AnyMethodValidate,
 > = {
-  [Route in R]: {
-    [M in FetchableMethod as M extends K ? M : never]: Endpoint<
-      MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
-      P
-    >;
-  };
+  [Route in R]: MethodsRecord<K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>;
 };
 
 /**
@@ -462,12 +461,12 @@ export interface RoutePluginBrand {
 
 /**
  * The `H3Plugin` returned by `defineRoute`: a real plugin, a required {@link RoutePluginBrand} (so it's
- * nominally a route plugin), and a **phantom** `~route` stamp carrying the route's typed
- * {@link RouteRecord} contribution — type-only, never present at runtime. `InferRouteTypes` recovers it.
+ * nominally a route plugin), and a **type-only** `~inferRoute` stamp carrying the route's typed
+ * {@link RouteRecord} contribution — phantom, never present at runtime, read via `InferRoutes`.
  * Composes with `app.register(...)` like any plugin.
  */
 export type RoutePlugin<Routes = unknown> = H3Plugin &
-  RoutePluginBrand & { readonly "~route"?: Routes };
+  RoutePluginBrand & { readonly "~inferRoute"?: Routes };
 
 /** The handler shape {@link mountRouteHandler} accepts: a route handler carrying its `~routeDef`. */
 export type MountableRouteHandler = EventHandlerWithFetch & {
@@ -493,7 +492,7 @@ export function mountRouteHandler(h3: H3, route: string, handler: MountableRoute
  * Define a route as a plugin: register it with `app.register(defineRoute({ route, get, post }))`. Set
  * `route` to the path and add one entry per HTTP method; each `handler`'s `event` is typed from that
  * method's `validate` and the route `params`. Methods added to the same path across plugins compose
- * (a repeated method keeps the first). Recover the route types with `InferRouteTypes`/`InferRoutes`.
+ * (a repeated method keeps the first). Recover the route types with `InferRoutes`/`InferMethods`.
  *
  * @example
  * app.register(defineRoute({

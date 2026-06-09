@@ -1,11 +1,12 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { z } from "zod";
 
-import { H3Typed, type H3Routes } from "../src/h3-typed.ts";
+import { H3Typed } from "../src/h3-typed.ts";
 import { defineRoute } from "../src/route-handler.ts";
+import type { InferRoutes } from "../src/routes.ts";
 
 // Chained construction: the same realistic resource as routes.test.ts, built via the class so the
-// instance generic accumulates each contribution (the substrate H3Routes<typeof app> reads).
+// instance generic accumulates each contribution (the substrate InferRoutes<typeof app> reads).
 function makeApp() {
   return new H3Typed()
     .route({
@@ -33,8 +34,8 @@ function makeApp() {
     .route({ route: "/health", get: { handler: () => ({ ok: true }) } });
 }
 
-describe("H3Routes — the typed map accumulated through H3Typed.route()", () => {
-  type App = H3Routes<ReturnType<typeof makeApp>>;
+describe("InferRoutes — the typed map accumulated through H3Typed.route()", () => {
+  type App = InferRoutes<ReturnType<typeof makeApp>>;
 
   it("keys every chained route by its string literal", () => {
     expectTypeOf<keyof App>().toEqualTypeOf<"/posts/:id" | "/health">();
@@ -63,14 +64,14 @@ describe("H3Routes — the typed map accumulated through H3Typed.route()", () =>
       .route({ route: "/posts", get: { validate: { response: z.string() }, handler: () => "a" } })
       .route({ route: "/posts", post: { handler: () => ({ id: 1 }) } })
       .route({ route: "/posts", get: { handler: () => "shadowed" } });
-    type R = H3Routes<typeof app>;
+    type R = InferRoutes<typeof app>;
     expectTypeOf<keyof R["/posts"]>().toEqualTypeOf<"get" | "post">();
     // the first GET /posts wins
     expectTypeOf<R["/posts"]["get"]["response"]>().toEqualTypeOf<string>();
   });
 });
 
-describe("H3Routes — also reads a readonly RoutePlugin[] tuple (the register-style path)", () => {
+describe("InferRoutes — also reads a readonly RoutePlugin[] tuple (the register-style path)", () => {
   const posts = defineRoute({
     route: "/posts/:id",
     get: { validate: { response: z.object({ id: z.number() }) }, handler: () => ({ id: 1 }) },
@@ -78,13 +79,13 @@ describe("H3Routes — also reads a readonly RoutePlugin[] tuple (the register-s
   const health = defineRoute({ route: "/health", get: { handler: () => ({ ok: true }) } });
 
   it("aggregates a tuple identically to InferRoutes", () => {
-    type App = H3Routes<[typeof posts, typeof health]>;
+    type App = InferRoutes<[typeof posts, typeof health]>;
     expectTypeOf<keyof App>().toEqualTypeOf<"/posts/:id" | "/health">();
     expectTypeOf<App["/posts/:id"]["get"]["response"]>().toEqualTypeOf<{ id: number }>();
   });
 
   it("reads a single plugin too", () => {
-    type App = H3Routes<typeof posts>;
+    type App = InferRoutes<typeof posts>;
     expectTypeOf<keyof App>().toEqualTypeOf<"/posts/:id">();
   });
 });
@@ -100,7 +101,7 @@ describe("H3Typed.register — a RoutePlugin accumulates into the instance gener
       .register(posts)
       .route({ route: "/health", get: { handler: () => ({ ok: true }) } });
 
-    type App = H3Routes<typeof app>;
+    type App = InferRoutes<typeof app>;
     expectTypeOf<keyof App>().toEqualTypeOf<"/posts/:id" | "/health">();
     expectTypeOf<App["/posts/:id"]["get"]["response"]>().toEqualTypeOf<{ id: number }>();
   });
@@ -109,7 +110,7 @@ describe("H3Typed.register — a RoutePlugin accumulates into the instance gener
     const app = new H3Typed()
       .register(defineRoute({ route: "/x", get: { handler: () => "g" } }))
       .route({ route: "/x", post: { handler: () => "p" } });
-    type App = H3Routes<typeof app>;
+    type App = InferRoutes<typeof app>;
     expectTypeOf<keyof App["/x"]>().toEqualTypeOf<"get" | "post">();
   });
 

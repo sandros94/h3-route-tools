@@ -16,14 +16,16 @@ export type {
   StatusCodeKey,
   RoutePlugin,
   RouteRecord,
+  MethodsRecord,
   Endpoint,
   FetchableMethod,
 } from "./route-handler.ts";
 
 export { H3Typed } from "./h3-typed.ts";
-export type { H3TypedConfig, H3Routes } from "./h3-typed.ts";
+export type { H3TypedConfig } from "./h3-typed.ts";
 
-export type { InferRouteTypes, InferRoutes } from "./routes.ts";
+export { mountRoutes } from "./routes.ts";
+export type { InferRoutes, InferMethods, RouteMap, AnyRouteHandler } from "./routes.ts";
 
 export { defineSchema } from "./define-schema.ts";
 

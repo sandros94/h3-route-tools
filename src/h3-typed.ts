@@ -11,7 +11,7 @@ import {
   mountRouteHandler,
 } from "./route-handler.ts";
 import type { SchemaWithJSON } from "./internal/types.ts";
-import type { InferRouteTypes, InferRoutes, MergePair, Prettify } from "./routes.ts";
+import type { InferRouteTypes, MergePair, Prettify } from "./routes.ts";
 import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
 
 /** {@link H3} config plus an optional `openapi` block that serves the generated document. */
@@ -21,7 +21,7 @@ export interface H3TypedConfig extends H3Config {
 
 /**
  * An {@link H3} app that remembers the routes you add. Build it fluently with `.route(def)` and
- * `.register(plugin)`; `H3Routes<typeof app>` then gives the full `{ [route]: { [method]: Endpoint } }`
+ * `.register(plugin)`; `InferRoutes<typeof app>` then gives the full `{ [route]: { [method]: Endpoint } }`
  * map for a typed client.
  *
  * @example
@@ -29,7 +29,7 @@ export interface H3TypedConfig extends H3Config {
  *   .route({ route: "/users/:id", get: { validate: { response: User }, handler } })
  *   .register(postsPlugin);
  *
- * type Routes = H3Routes<typeof app>;
+ * type Routes = InferRoutes<typeof app>;
  */
 export class H3Typed<Routes = {}> extends H3 {
   /**
@@ -62,7 +62,7 @@ export class H3Typed<Routes = {}> extends H3 {
    * Define and mount a route, returning the app for chaining. Pass the route path plus one entry per
    * HTTP method; each `handler`'s `event` is typed from that method's `validate` and the route
    * `params`. Different methods added to the same path (here or via `.register`) compose; a repeated
-   * method keeps the first. The route is recorded in the app's type for `H3Routes<typeof app>`.
+   * method keeps the first. The route is recorded in the app's type for `InferRoutes<typeof app>`.
    *
    * @example
    * app.route({
@@ -103,17 +103,3 @@ export class H3Typed<Routes = {}> extends H3 {
     return this;
   }
 }
-
-/**
- * The aggregated `{ [route]: { [method]: Endpoint } }` map a typed client or codegen consumes. Pass
- * an {@link H3Typed} instance (`H3Routes<typeof app>`), a `readonly RoutePlugin[]` tuple, or a single
- * {@link RoutePlugin}.
- */
-export type H3Routes<T> =
-  T extends H3Typed<infer Routes>
-    ? Routes
-    : T extends readonly RoutePlugin[]
-      ? InferRoutes<T>
-      : T extends RoutePlugin
-        ? InferRouteTypes<T>
-        : never;
