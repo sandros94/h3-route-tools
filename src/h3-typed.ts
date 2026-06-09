@@ -11,7 +11,8 @@ import {
   mountRouteHandler,
 } from "./route-handler.ts";
 import type { SchemaWithJSON } from "./internal/types.ts";
-import type { InferRouteTypes, MergePair, Prettify } from "./routes.ts";
+import type { InferRouteTypes, MergePair } from "./routes.ts";
+import type { Prettify } from "./internal/types.ts";
 import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
 
 /** {@link H3} config plus an optional `openapi` block that serves the generated document. */

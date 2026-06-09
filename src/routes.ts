@@ -8,6 +8,7 @@ import {
   mountRouteHandler,
 } from "./route-handler.ts";
 import type { H3Typed } from "./h3-typed.ts";
+import type { Prettify } from "./internal/types.ts";
 
 /**
  * Recover the typed-route contribution (`{ [route]: { [method]: Endpoint } }`) stamped on a
@@ -16,9 +17,6 @@ import type { H3Typed } from "./h3-typed.ts";
  */
 export type InferRouteTypes<P extends RoutePlugin> =
   P extends RoutePlugin<infer Routes> ? Routes : never;
-
-/** Flatten an intersection / mapped type into a plain object type (display only). */
-export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 /** Merge two route maps: different paths/methods compose; a method in both is first-wins (`A`). */
 export type MergePair<A, B> = {

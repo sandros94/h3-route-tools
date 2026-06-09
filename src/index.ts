@@ -27,6 +27,15 @@ export type { H3TypedConfig } from "./h3-typed.ts";
 export { mountRoutes } from "./routes.ts";
 export type { InferRoutes, InferMethods, RouteMap, AnyRouteHandler } from "./routes.ts";
 
+export { createTypedFetch } from "./typed-fetch.ts";
+export type {
+  TypedFetch,
+  TypedResponse,
+  NormalizeRoutes,
+  CreateTypedFetchOptions,
+  FetchLike,
+} from "./typed-fetch.ts";
+
 export { defineSchema } from "./define-schema.ts";
 
 export { defineOpenAPI } from "./define-openapi.ts";

@@ -13,6 +13,9 @@ export type RouteMethod = Lowercase<HTTPMethod>;
 /** Status code key for response maps — numeric (`200`) or string (`"4XX"`, `"default"`). */
 export type StatusCodeKey = number | string;
 
+/** Flatten an intersection / mapped type into a plain object type (display only). */
+export type Prettify<T> = { [K in keyof T]: T[K] } & {};
+
 export type InferInput<Schema extends StandardTypedV1> = StandardSchemaV1.InferInput<Schema>;
 export type InferOutput<Schema extends StandardTypedV1> = StandardSchemaV1.InferOutput<Schema>;
 export type FailureResult = StandardSchemaV1.FailureResult;
