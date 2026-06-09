@@ -48,6 +48,43 @@ describe("defineRoute — e2e", () => {
     expect(await (await app.request("/direct")).text()).toBe("direct");
   });
 
+  /*
+    The migration-bridge contract: a bare defineRouteHandler is a drop-in for defineEventHandler
+    BECAUSE it self-dispatches. Mounted in a method-agnostic slot (app.all / app.use / a non
+    method-locked Nitro file), the single handler serves every declared method itself.
+  */
+  it("drop-in: one app.all mount serves all declared methods + 405/OPTIONS", async () => {
+    app.all(
+      "/u",
+      defineRouteHandler({
+        get: { handler: () => "got" },
+        post: { handler: () => "posted" },
+      }),
+    );
+    expect(await (await app.request("/u")).text()).toBe("got");
+    expect(await (await app.request("/u", { method: "POST" })).text()).toBe("posted");
+    expect((await app.request("/u", { method: "DELETE" })).status).toBe(405);
+    expect((await app.request("/u", { method: "OPTIONS" })).status).toBe(204);
+  });
+
+  /*
+    Known footgun (to be flagged by the Nitro dev plugin's method-lock check): a MULTI-method handler
+    in a SINGLE-method slot — app.get(...) or a `*.get.ts` file — only ever receives that one method;
+    the others never reach the self-dispatcher and 404. Pinned so this stays a loud, intended break.
+  */
+  it("footgun: a multi-method handler under app.get leaves the other methods unreachable (404)", async () => {
+    app.get(
+      "/u",
+      defineRouteHandler({
+        get: { handler: () => "got" },
+        post: { handler: () => "posted" },
+      }),
+    );
+    expect(await (await app.request("/u")).text()).toBe("got");
+    expect((await app.request("/u", { method: "POST" })).status).toBe(404);
+    expect((await app.request("/u", { method: "OPTIONS" })).status).toBe(404);
+  });
+
   it("exposes typed, coerced params via event.context.params and event.validated", async () => {
     app.register(
       defineRoute({

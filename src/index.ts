@@ -1,8 +1,9 @@
-export { defineRouteHandler, defineRoute } from "./route-handler.ts";
+export { defineRouteHandler, defineRoute, mountRouteHandler } from "./route-handler.ts";
 export type {
   RouteHandler,
   RouteHandlerDef,
   RouteHandlerOptions,
+  MountableRouteHandler,
   MethodValidate,
   MethodStream,
   ResponseValidation,
@@ -18,6 +19,9 @@ export type {
   Endpoint,
   FetchableMethod,
 } from "./route-handler.ts";
+
+export { H3Typed } from "./h3-typed.ts";
+export type { H3TypedConfig, H3Routes } from "./h3-typed.ts";
 
 export type { InferRouteTypes, InferRoutes } from "./routes.ts";
 

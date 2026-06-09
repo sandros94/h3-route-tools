@@ -469,11 +469,38 @@ export interface RoutePluginBrand {
 export type RoutePlugin<Routes = unknown> = H3Plugin &
   RoutePluginBrand & { readonly "~route"?: Routes };
 
+/** The handler shape {@link mountRouteHandler} accepts: a route handler carrying its `~routeDef`. */
+export type MountableRouteHandler = EventHandlerWithFetch & {
+  readonly "~routeDef": DocumentableRouteDef & { middleware?: Middleware[] };
+};
+
 /**
- * Route-aware sugar over {@link defineRouteHandler}: builds the handler and mounts it (each declared
- * method as a dedicated `h3.on` + a catch-all `h3.all`, so methods on a shared path compose). Returns
- * a {@link RoutePlugin} for `app.register(...)`. Each `handler`'s `event` is typed from its own
- * `validate` and route `params`.
+ * Mount a built route handler onto an app at `route`. Every declared method is served, and different
+ * methods on the same path compose across callers (a repeated method keeps the first). Use it to get
+ * `defineRoute`/`H3Typed.route` mounting from a handler you already have:
+ * `mountRouteHandler(app, "/users", handler)`.
+ */
+export function mountRouteHandler(h3: H3, route: string, handler: MountableRouteHandler): void {
+  const def = handler["~routeDef"];
+  const opts = { middleware: def.middleware, meta: def.meta };
+  for (const method of METHOD_KEYS) {
+    if (isRuntimeMethod(Reflect.get(def, method))) h3.on(method, route, handler, opts);
+  }
+  h3.all(route, handler, opts);
+}
+
+/**
+ * Define a route as a plugin: register it with `app.register(defineRoute({ route, get, post }))`. Set
+ * `route` to the path and add one entry per HTTP method; each `handler`'s `event` is typed from that
+ * method's `validate` and the route `params`. Methods added to the same path across plugins compose
+ * (a repeated method keeps the first). Recover the route types with `InferRouteTypes`/`InferRoutes`.
+ *
+ * @example
+ * app.register(defineRoute({
+ *   route: "/users/:id",
+ *   params: z.object({ id: z.coerce.number() }),
+ *   get: { validate: { response: User }, handler: (e) => getUser(e.context.params.id) },
+ * }))
  */
 export function defineRoute<
   R extends string,
@@ -497,15 +524,7 @@ export function defineRoute<
   const { route, ...rest } = def;
   const handler = defineRouteHandler(rest, options);
   const brand: RoutePluginBrand = { "~routePlugin": true };
-  return Object.assign((h3: H3) => {
-    const opts = { middleware: def.middleware, meta: def.meta };
-    /* Each declared method is dedicated; the catch-all handles undeclared methods (405/Allow) and auto
-       HEAD/OPTIONS. Dedicated routes beat the catch-all, so methods on a shared path compose. */
-    for (const method of METHOD_KEYS) {
-      if (isRuntimeMethod(Reflect.get(rest, method))) h3.on(method, route, handler, opts);
-    }
-    h3.all(route, handler, opts);
-  }, brand);
+  return Object.assign((h3: H3) => mountRouteHandler(h3, route, handler), brand);
 }
 
 function makeDispatcher(

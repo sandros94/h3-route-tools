@@ -9,10 +9,10 @@ export type InferRouteTypes<P extends RoutePlugin> =
   P extends RoutePlugin<infer Routes> ? Routes : never;
 
 /** Flatten an intersection / mapped type into a plain object type (display only). */
-type Prettify<T> = { [K in keyof T]: T[K] } & {};
+export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 /** Merge two route maps: different paths/methods compose; a method in both is first-wins (`A`). */
-type MergePair<A, B> = {
+export type MergePair<A, B> = {
   [P in keyof A | keyof B]: P extends keyof A
     ? P extends keyof B
       ? Prettify<A[P] & Omit<B[P], keyof A[P]>>
