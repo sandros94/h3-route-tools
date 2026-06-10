@@ -58,6 +58,9 @@ export type {
 export { attachRegistry, getRegistry, getOpenAPIConfig, harvestRoutes } from "./registry.ts";
 export type { OpenAPIRegistry, OpenAPIConfig } from "./registry.ts";
 
+export { getOpenAPIDocument, writeOpenAPIDocument } from "./generate.ts";
+export type { WriteOpenAPIOptions } from "./generate.ts";
+
 export {
   HTTPErrorSchema,
   ValidationErrorSchema,
