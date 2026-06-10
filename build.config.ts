@@ -9,5 +9,13 @@ export default defineBuildConfig({
         platform: "neutral",
       },
     },
+    {
+      type: "bundle",
+      input: ["./src/codegen.ts"],
+      rolldown: {
+        platform: "node",
+        external: ["typescript"],
+      },
+    },
   ],
 });

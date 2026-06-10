@@ -20,6 +20,10 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./codegen": {
+      "types": "./dist/codegen.d.mts",
+      "import": "./dist/codegen.mjs"
     }
   },
   "scripts": {
@@ -56,7 +60,13 @@
   },
   "peerDependencies": {
     "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
-    "srvx": "^0.11.15"
+    "srvx": "^0.11.15",
+    "typescript": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   },
   "resolutions": {
     "h3-typed-routes": "link:."

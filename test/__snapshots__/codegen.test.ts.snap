@@ -1,0 +1,6 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateRoutesDts — flattened, self-contained contract > matches the snapshot (regression guard for the whole flattened type) 1`] = `
+"export type AppRoutes = { "/posts/:id": { get: { params: { id: number; }; query: { [x: string]: string | undefined; }; headers: { [x: string]: string; }; body: unknown; response: { id: number; title: string; when: Date; status: "draft" | "published"; author: { name: string; email?: string | undefined; }; tags: string[]; }; }; post: { params: { id: number; }; query: { draft: boolean; }; headers: { [x: string]: string; }; body: { title: string; tags: string; }; response: { id: number; tagCount: number; }; }; }; "/users/:id": { get: { params: { id: number; }; query: { [x: string]: string | undefined; }; headers: { authorization: string; }; body: unknown; response: { id: number; name: string; } | { error: "not_found"; }; }; }; "/health": { get: { params: { [x: string]: string; }; query: { [x: string]: string | undefined; }; headers: { [x: string]: string; }; body: unknown; response: unknown; }; }; };
+"
+`;
