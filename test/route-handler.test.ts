@@ -255,3 +255,75 @@ describe("defineRouteHandler end-to-end handler inference", () => {
     defineRouteHandler({ get: { handler: () => "ok" }, head: false, options: false });
   });
 });
+
+describe("request-body rules by method", () => {
+  it("forbids validate.body on get/head/trace/connect", () => {
+    defineRouteHandler({
+      // @ts-expect-error — GET takes no request body
+      get: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+    });
+    defineRouteHandler({
+      // @ts-expect-error — HEAD takes no request body
+      head: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+    });
+    defineRouteHandler({
+      // @ts-expect-error — TRACE takes no request body
+      trace: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+    });
+    defineRouteHandler({
+      // @ts-expect-error — CONNECT takes no request body
+      connect: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+    });
+  });
+
+  it("forbids stream.body on a body-forbidden method", () => {
+    defineRouteHandler({
+      // @ts-expect-error — GET takes no streamed request body either
+      get: { stream: { body: { "application/octet-stream": true } }, handler: () => null },
+    });
+  });
+
+  it("allows validate.body on post/put/patch/delete/options", () => {
+    defineRouteHandler({
+      post: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+      put: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+      patch: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+      delete: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+      options: { validate: { body: z.object({ x: z.number() }) }, handler: () => null },
+      get: {
+        validate: { query: z.object({ q: z.string() }), response: z.object({ ok: z.boolean() }) },
+        handler: () => ({ ok: true }),
+      },
+    });
+  });
+});
+
+describe("declared head/options appear in the contract", () => {
+  it("a declared OPTIONS is a full endpoint (body + response)", () => {
+    const handler = defineRouteHandler({
+      options: {
+        validate: {
+          body: z.object({ probe: z.string() }),
+          response: z.object({ ok: z.boolean() }),
+        },
+        handler: async (event) => {
+          expectTypeOf(await event.req.json()).toEqualTypeOf<{ probe: string }>();
+          return { ok: true };
+        },
+      },
+    });
+    type Methods = NonNullable<(typeof handler)["~inferMethods"]>;
+    expectTypeOf<keyof Methods>().toEqualTypeOf<"options">();
+    expectTypeOf<Methods["options"]["body"]>().toEqualTypeOf<{ probe: string }>();
+    expectTypeOf<Methods["options"]["response"]>().toEqualTypeOf<{ ok: boolean }>();
+  });
+
+  it("a declared HEAD carries neither body nor response", () => {
+    const handler = defineRouteHandler({
+      head: { validate: { headers: z.object({ "x-id": z.string() }) }, handler: () => null },
+    });
+    type Methods = NonNullable<(typeof handler)["~inferMethods"]>;
+    expectTypeOf<keyof Methods>().toEqualTypeOf<"head">();
+    expectTypeOf<keyof Methods["head"]>().toEqualTypeOf<"params" | "query" | "headers">();
+  });
+});

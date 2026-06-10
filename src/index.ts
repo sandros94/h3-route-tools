@@ -18,7 +18,8 @@ export type {
   RouteRecord,
   MethodsRecord,
   Endpoint,
-  FetchableMethod,
+  CallableMethod,
+  BodylessMethod,
 } from "./route-handler.ts";
 
 export { H3Typed } from "./h3-typed.ts";

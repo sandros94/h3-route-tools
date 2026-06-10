@@ -57,8 +57,10 @@ describe("InferRoutes — aggregating a route-map object", () => {
     }>();
   });
 
-  it("leaves a body-less method's body unknown", () => {
-    expectTypeOf<Map["/health"]["get"]["body"]>().toBeUnknown();
+  it("omits body on GET (no request body per RFC)", () => {
+    expectTypeOf<keyof Map["/health"]["get"]>().toEqualTypeOf<
+      "params" | "query" | "headers" | "response"
+    >();
   });
 
   it("InferRouteMap is the same as the InferRoutes object branch", () => {

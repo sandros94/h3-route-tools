@@ -50,6 +50,12 @@ describe("codegen fixture app — real & runnable", () => {
     expect((await app.request("/users/5")).status).toBe(400);
   });
 
+  it("DELETE /posts/:id (no request body) returns its validated response", async () => {
+    const res = await app.request("/posts/3", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+  });
+
   it("GET /health", async () => {
     expect(await (await app.request("/health")).json()).toEqual({ ok: true });
   });
@@ -73,6 +79,11 @@ describe("generateRoutesDts — flattened, self-contained contract", () => {
     expect(dts).toMatch(/body:\s*\{\s*title:\s*string;\s*tags:\s*string;\s*\}/);
     // multi-response → a union
     expect(dts).toContain('{ id: number; name: string; } | { error: "not_found"; }');
+    // GET carries no body; DELETE declares no schema so it surfaces `body: unknown`. Exactly two
+    // bodies in the doc: POST (typed) + DELETE (unknown).
+    expect((dts.match(/\bbody:/g) ?? []).length).toBe(2);
+    expect(dts).toContain("body: unknown");
+    expect(dts).toContain("deleted: boolean");
   });
 });
 

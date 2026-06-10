@@ -108,13 +108,24 @@ export type MethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON 
 ) => InferMethodResponse<V> | Promise<InferMethodResponse<V>>;
 
 /**
- * Per-method def whose `handler` signature is derived from `V` (this method's validate) and `P`
- * (route-level params). `V` is inferred from the sibling `validate`, so the handler's `event` is
- * typed from the schemas declared in the same object.
+ * Methods that carry no request body — single source of truth for the def (forbids a declared body)
+ * and {@link MethodsRecord} (omits it). `delete`/`options` are excluded: their bodies are supported
+ * by both h3 and the fetch transport.
  */
-export interface PerMethodDef<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> {
-  validate?: V;
-  stream?: MethodStream;
+export type BodylessMethod = "get" | "head" | "trace" | "connect";
+
+/**
+ * Per-method def; `handler`'s `event` is typed from this method's `validate` (`V`, inferred from the
+ * sibling field) and route `params` (`P`). For a {@link BodylessMethod} `M`, `validate.body`/
+ * `stream.body` is a compile error.
+ */
+export interface PerMethodDef<
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  M extends RouteMethod = RouteMethod,
+> {
+  validate?: [M] extends [BodylessMethod] ? V & { body?: never } : V;
+  stream?: [M] extends [BodylessMethod] ? MethodStream & { body?: never } : MethodStream;
   meta?: H3RouteMeta;
   handler: MethodHandler<V, P>;
 }
@@ -129,15 +140,15 @@ export interface RouteHandlerDef<
   params?: P;
   middleware?: Middleware[];
   meta?: H3RouteMeta;
-  get?: PerMethodDef<AnyMethodValidate, P>;
-  post?: PerMethodDef<AnyMethodValidate, P>;
-  put?: PerMethodDef<AnyMethodValidate, P>;
-  patch?: PerMethodDef<AnyMethodValidate, P>;
-  delete?: PerMethodDef<AnyMethodValidate, P>;
-  head?: PerMethodDef<AnyMethodValidate, P> | false;
-  options?: PerMethodDef<AnyMethodValidate, P> | false;
-  connect?: PerMethodDef<AnyMethodValidate, P>;
-  trace?: PerMethodDef<AnyMethodValidate, P>;
+  get?: PerMethodDef<AnyMethodValidate, P, "get">;
+  post?: PerMethodDef<AnyMethodValidate, P, "post">;
+  put?: PerMethodDef<AnyMethodValidate, P, "put">;
+  patch?: PerMethodDef<AnyMethodValidate, P, "patch">;
+  delete?: PerMethodDef<AnyMethodValidate, P, "delete">;
+  head?: PerMethodDef<AnyMethodValidate, P, "head"> | false;
+  options?: PerMethodDef<AnyMethodValidate, P, "options"> | false;
+  connect?: PerMethodDef<AnyMethodValidate, P, "connect">;
+  trace?: PerMethodDef<AnyMethodValidate, P, "trace">;
 }
 
 /**
@@ -160,15 +171,17 @@ export interface RouteHandlerInput<
   params?: P;
   middleware?: Middleware[];
   meta?: H3RouteMeta;
-  get?: PerMethodDef<Get, P>;
-  put?: PerMethodDef<Put, P>;
-  post?: PerMethodDef<Post, P>;
-  delete?: PerMethodDef<Del, P>;
-  options?: PerMethodDef<Options, P> | false;
-  head?: PerMethodDef<Head, P> | false;
-  patch?: PerMethodDef<Patch, P>;
-  trace?: PerMethodDef<Trace, P>;
-  connect?: PerMethodDef<Connect, P>;
+  // Body-allowed methods.
+  put?: PerMethodDef<Put, P, "put">;
+  post?: PerMethodDef<Post, P, "post">;
+  patch?: PerMethodDef<Patch, P, "patch">;
+  delete?: PerMethodDef<Del, P, "delete">;
+  options?: PerMethodDef<Options, P, "options"> | false;
+  // Body-forbidden methods ({@link BodylessMethod}).
+  get?: PerMethodDef<Get, P, "get">;
+  head?: PerMethodDef<Head, P, "head"> | false;
+  trace?: PerMethodDef<Trace, P, "trace">;
+  connect?: PerMethodDef<Connect, P, "connect">;
 }
 
 /**
@@ -364,9 +377,11 @@ export function defineRouteHandler<
   return Object.assign(dispatcher, { "~routeDef": def, "~options": options });
 }
 
-/** HTTP methods exposed in the typed route surface. Protocol methods (head/options/trace/connect) are
- * auto-handled and intentionally excluded from the fetcher type. */
-export type FetchableMethod = "get" | "post" | "put" | "patch" | "delete";
+/**
+ * Methods exposed in the typed surface (contract + fetcher) — those a fetch client can issue.
+ * `trace`/`connect` are excluded; `head`/`options` appear only when explicitly declared.
+ */
+export type CallableMethod = "get" | "head" | "post" | "put" | "patch" | "delete" | "options";
 
 /**
  * The typed surface of one method, from a caller's perspective:
@@ -407,9 +422,9 @@ interface MethodValidates<
 }
 
 /**
- * The per-method `{ [declaredMethod]: Endpoint }` map of one route handler. `K` is the declared-method
- * key union (captured via `& Record<K, unknown>`); only methods actually declared *and*
- * {@link FetchableMethod fetchable} appear — no phantom entries.
+ * Per-route `{ [declaredMethod]: Endpoint }` map. `K` is the declared-method key union; only declared
+ * {@link CallableMethod}s appear. `head` omits `body` and `response`; other {@link BodylessMethod}s
+ * omit `body`.
  */
 export type MethodsRecord<
   K extends string,
@@ -424,10 +439,20 @@ export type MethodsRecord<
   Trace extends AnyMethodValidate,
   Connect extends AnyMethodValidate,
 > = {
-  [M in FetchableMethod as M extends K ? M : never]: Endpoint<
-    MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
-    P
-  >;
+  [M in CallableMethod as M extends K ? M : never]: M extends "head"
+    ? Omit<
+        Endpoint<MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M], P>,
+        "body" | "response"
+      >
+    : M extends BodylessMethod
+      ? Omit<
+          Endpoint<
+            MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
+            P
+          >,
+          "body"
+        >
+      : Endpoint<MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M], P>;
 };
 
 /**

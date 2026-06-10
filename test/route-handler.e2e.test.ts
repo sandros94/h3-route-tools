@@ -145,6 +145,60 @@ describe("defineRoute — e2e", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("reads + validates a DELETE request body", async () => {
+    app.register(
+      defineRoute({
+        route: "/res/:id",
+        params: z.object({ id: z.coerce.number() }),
+        delete: {
+          validate: {
+            body: z.object({ reason: z.string() }),
+            response: z.object({ deleted: z.number(), reason: z.string() }),
+          },
+          handler: async (event) => ({
+            deleted: event.validated.params.id,
+            reason: (await event.req.json()).reason,
+          }),
+        },
+      }),
+    );
+    const ok = await app.request("/res/9", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "cleanup" }),
+    });
+    expect(await ok.json()).toEqual({ deleted: 9, reason: "cleanup" });
+
+    const bad = await app.request("/res/9", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: 42 }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it("reads + validates a declared OPTIONS body (overrides auto-OPTIONS)", async () => {
+    app.register(
+      defineRoute({
+        route: "/probe",
+        options: {
+          validate: {
+            body: z.object({ probe: z.string() }),
+            response: z.object({ echoed: z.string() }),
+          },
+          handler: async (event) => ({ echoed: (await event.req.json()).probe }),
+        },
+      }),
+    );
+    const res = await app.request("/probe", {
+      method: "OPTIONS",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ probe: "hi" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ echoed: "hi" });
+  });
+
   it("enforces a media-type map (415 on mismatch)", async () => {
     app.register(
       defineRoute({

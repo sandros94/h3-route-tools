@@ -63,8 +63,15 @@ describe("InferRouteTypes — the typed-route stamp defineRoute carries", () => 
     expectTypeOf<Posts["/posts/:id"]["post"]["response"]>().toEqualTypeOf<{ id: number }>();
   });
 
-  it("leaves a body-less method's body unknown — not any", () => {
-    expectTypeOf<Posts["/posts/:id"]["get"]["body"]>().toBeUnknown();
+  it("omits body on GET (no request body per RFC); other fields stay", () => {
+    expectTypeOf<keyof Posts["/posts/:id"]["get"]>().toEqualTypeOf<
+      "params" | "query" | "headers" | "response"
+    >();
+    // POST keeps body — it's the schema input
+    expectTypeOf<Posts["/posts/:id"]["post"]["body"]>().toEqualTypeOf<{
+      title: string;
+      tags: string;
+    }>();
   });
 });
 

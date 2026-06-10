@@ -43,6 +43,11 @@ export const app = new H3Typed()
         return { id: event.validated.params.id, tagCount: body.tags.length };
       },
     },
+    // DELETE takes no request body (RFC 9110 §9.3.5) — only a typed response.
+    delete: {
+      validate: { response: z.object({ deleted: z.boolean() }) },
+      handler: () => ({ deleted: true }),
+    },
   })
   .route({
     route: "/users/:id",

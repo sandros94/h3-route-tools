@@ -35,20 +35,12 @@ type ParamsOption<E> = E extends { params: infer P }
       : { params: P }
   : {};
 
-/** No `body` on `GET`/`HEAD` (RFC 9110; `fetch()` throws); otherwise present when the endpoint declares one. */
-type BodyOption<E, M> =
-  Lower<M> extends "get" | "head"
-    ? {}
-    : E extends { body: infer B }
-      ? unknown extends B
-        ? {}
-        : { body: B }
-      : {};
+type BodyOption<E> = E extends { body: infer B } ? (unknown extends B ? {} : { body: B }) : {};
 
 /** The chosen `method` plus the endpoint's typed params/query/headers/body. */
 type EndpointOptions<E, M> = Prettify<
   { method: M } & ParamsOption<E> &
-    BodyOption<E, M> & {
+    BodyOption<E> & {
       query?: E extends { query: infer Q } ? Q : never;
       headers?: E extends { headers: infer H } ? H : never;
     }
