@@ -4,6 +4,7 @@ import {
   type AnyMethodValidate,
   type MethodValidate,
   type RouteHandlerInput,
+  type ResponseRecord,
   type RouteHandlerOptions,
   type RouteRecord,
   type RoutePlugin,
@@ -85,8 +86,10 @@ export class H3Typed<Routes = {}> extends H3 {
     Patch extends AnyMethodValidate = MethodValidate,
     Trace extends AnyMethodValidate = MethodValidate,
     Connect extends AnyMethodValidate = MethodValidate,
+    const RR extends ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> =
+      ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
   >(
-    def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> & {
+    def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
       route: R;
     } & Record<K, unknown>,
     options: RouteHandlerOptions = {},

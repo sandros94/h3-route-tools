@@ -25,9 +25,7 @@ export const app = new H3Typed()
         id: event.validated.params.id,
         title: "Hello",
         when: new Date(0),
-        // `as const` preserves the enum literal (the per-method generic doesn't pin the handler's
-        // contextual return type, so an inline literal otherwise widens to `string`).
-        status: "published" as const,
+        status: "published",
         author: { name: "Ada" },
         tags: ["a", "b"],
       }),
@@ -63,7 +61,7 @@ export const app = new H3Typed()
       handler: (event) => {
         if (event.validated.params.id === 0) {
           event.res.status = 404;
-          return { error: "not_found" as const };
+          return { error: "not_found" };
         }
         return { id: event.validated.params.id, name: "Ada" };
       },

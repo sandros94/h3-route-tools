@@ -102,10 +102,21 @@ export type MethodEvent<
   validated: ValidatedData<V, P>;
 };
 
-/** Computed event-handler signature for a method, given its validate config + route params. */
-export type MethodHandler<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> = (
+/**
+ * A method's handler signature: `event` is typed from this method's `validate` (`V`) and route `params`
+ * (`P`), and the return must match the response output. `RH` is the entry point's `const`-captured return
+ * — it preserves inline response literals; intersecting it with the response output applies the schema's
+ * nullishness, so a plain response rejects `undefined`/`null` while an `optional`/`nullish` one allows it.
+ */
+export type MethodHandler<
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  RH = InferMethodResponse<V>,
+> = (
   event: MethodEvent<V, P>,
-) => InferMethodResponse<V> | Promise<InferMethodResponse<V>>;
+) =>
+  | (RH & ConstResponse<InferMethodResponse<V>>)
+  | Promise<RH & ConstResponse<InferMethodResponse<V>>>;
 
 /**
  * Methods that carry no request body — single source of truth for the def (forbids a declared body)
@@ -123,11 +134,12 @@ export interface PerMethodDef<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   M extends RouteMethod = RouteMethod,
+  RH = InferMethodResponse<V>,
 > {
   validate?: [M] extends [BodylessMethod] ? V & { body?: never } : V;
   stream?: [M] extends [BodylessMethod] ? MethodStream & { body?: never } : MethodStream;
   meta?: H3RouteMeta;
-  handler: MethodHandler<V, P>;
+  handler: MethodHandler<V, P, RH>;
 }
 
 /**
@@ -152,6 +164,47 @@ export interface RouteHandlerDef<
 }
 
 /**
+ * Relaxes a type so a `const`-captured handler return (deeply `readonly`) still satisfies the schema's
+ * mutable output: arrays/tuples become `readonly`, objects recurse, built-ins and functions pass through.
+ */
+type ConstResponse<T> = T extends Date | RegExp | URL
+  ? T
+  : T extends (...args: never[]) => unknown
+    ? T
+    : T extends readonly (infer U)[]
+      ? readonly ConstResponse<U>[]
+      : T extends object
+        ? { [K in keyof T]: ConstResponse<T[K]> }
+        : T;
+
+/**
+ * Per-method record of handler-return types, captured as a `const` generic at each entry point so inline
+ * response literals are preserved. Each value is constrained to its method's response output; read in
+ * {@link RouteHandlerInput} as `R["<method>"]`.
+ */
+export interface ResponseRecord<
+  Get extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Trace extends AnyMethodValidate,
+  Connect extends AnyMethodValidate,
+> {
+  get?: ConstResponse<InferMethodResponse<Get>>;
+  put?: ConstResponse<InferMethodResponse<Put>>;
+  post?: ConstResponse<InferMethodResponse<Post>>;
+  delete?: ConstResponse<InferMethodResponse<Del>>;
+  options?: ConstResponse<InferMethodResponse<Options>>;
+  head?: ConstResponse<InferMethodResponse<Head>>;
+  patch?: ConstResponse<InferMethodResponse<Patch>>;
+  trace?: ConstResponse<InferMethodResponse<Trace>>;
+  connect?: ConstResponse<InferMethodResponse<Connect>>;
+}
+
+/**
  * The `def` of `defineRouteHandler`, with one inferred validate type per method. Each method generic
  * flows into its own handler signature — no shared `Def`, which is what lets per-method inference work
  * through a single object literal. Also serves as the `~routeDef` stamp carried on the built handler.
@@ -167,21 +220,22 @@ export interface RouteHandlerInput<
   Patch extends AnyMethodValidate,
   Trace extends AnyMethodValidate,
   Connect extends AnyMethodValidate,
+  R extends ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
 > {
   params?: P;
   middleware?: Middleware[];
   meta?: H3RouteMeta;
   // Body-allowed methods.
-  put?: PerMethodDef<Put, P, "put">;
-  post?: PerMethodDef<Post, P, "post">;
-  patch?: PerMethodDef<Patch, P, "patch">;
-  delete?: PerMethodDef<Del, P, "delete">;
-  options?: PerMethodDef<Options, P, "options"> | false;
+  put?: PerMethodDef<Put, P, "put", R["put"]>;
+  post?: PerMethodDef<Post, P, "post", R["post"]>;
+  patch?: PerMethodDef<Patch, P, "patch", R["patch"]>;
+  delete?: PerMethodDef<Del, P, "delete", R["delete"]>;
+  options?: PerMethodDef<Options, P, "options", R["options"]> | false;
   // Body-forbidden methods ({@link BodylessMethod}).
-  get?: PerMethodDef<Get, P, "get">;
-  head?: PerMethodDef<Head, P, "head"> | false;
-  trace?: PerMethodDef<Trace, P, "trace">;
-  connect?: PerMethodDef<Connect, P, "connect">;
+  get?: PerMethodDef<Get, P, "get", R["get"]>;
+  head?: PerMethodDef<Head, P, "head", R["head"]> | false;
+  trace?: PerMethodDef<Trace, P, "trace", R["trace"]>;
+  connect?: PerMethodDef<Connect, P, "connect", R["connect"]>;
 }
 
 /**
@@ -354,12 +408,14 @@ export function defineRouteHandler<
   Patch extends AnyMethodValidate = MethodValidate,
   Trace extends AnyMethodValidate = MethodValidate,
   Connect extends AnyMethodValidate = MethodValidate,
+  const R extends ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> =
+    ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
 >(
-  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> &
+  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R> &
     Record<K, unknown>,
   options: RouteHandlerOptions = {},
 ): RouteHandler<
-  RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
+  RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R>,
   MethodsRecord<K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
 > {
   const methods: RuntimeMethods = {
@@ -539,8 +595,10 @@ export function defineRoute<
   Patch extends AnyMethodValidate = MethodValidate,
   Trace extends AnyMethodValidate = MethodValidate,
   Connect extends AnyMethodValidate = MethodValidate,
+  const RR extends ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> =
+    ResponseRecord<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>,
 >(
-  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect> & {
+  def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
     route: R;
   } & Record<K, unknown>,
   options: RouteHandlerOptions = {},

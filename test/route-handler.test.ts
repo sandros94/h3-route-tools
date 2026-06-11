@@ -116,8 +116,10 @@ describe("PerMethodDef handler signature", () => {
 
   it("types handler return as the inferred response output", () => {
     type V = MethodValidate<undefined, undefined, undefined, z.ZodObject<{ ok: z.ZodBoolean }>>;
-    type Return = ReturnType<PerMethodDef<V, undefined>["handler"]>;
-    expectTypeOf<Return>().toEqualTypeOf<{ ok: boolean } | Promise<{ ok: boolean }>>();
+    type Return = Awaited<ReturnType<PerMethodDef<V, undefined>["handler"]>>;
+    // mutual assignability == structural equality
+    expectTypeOf<Return>().toExtend<{ ok: boolean }>();
+    expectTypeOf<{ ok: boolean }>().toExtend<Return>();
   });
 });
 
@@ -325,5 +327,108 @@ describe("declared head/options appear in the contract", () => {
     type Methods = NonNullable<(typeof handler)["~inferMethods"]>;
     expectTypeOf<keyof Methods>().toEqualTypeOf<"head">();
     expectTypeOf<keyof Methods["head"]>().toEqualTypeOf<"params" | "query" | "headers">();
+  });
+});
+
+describe("preserves inline response literals (no `as const`)", () => {
+  it("enum/literal response", () => {
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ status: z.enum(["draft", "published"]) }) },
+        handler: () => ({ status: "published" }),
+      },
+    });
+  });
+
+  it("status-code map (discriminated union)", () => {
+    defineRouteHandler({
+      get: {
+        validate: {
+          response: {
+            200: z.object({ id: z.number(), kind: z.literal("ok") }),
+            404: z.object({ error: z.literal("not_found") }),
+          },
+        },
+        handler: (event) => {
+          if (event.validated.query.flag) {
+            event.res.status = 404;
+            return { error: "not_found" };
+          }
+          return { id: 1, kind: "ok" };
+        },
+      },
+    });
+  });
+
+  it("array response needs no cast", () => {
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ tags: z.array(z.string()) }) },
+        handler: () => ({ tags: ["a", "b"] }),
+      },
+    });
+  });
+
+  it("preserved through defineRoute", () => {
+    defineRoute({
+      route: "/x",
+      get: {
+        validate: { response: z.object({ status: z.enum(["a", "b"]) }) },
+        handler: () => ({ status: "a" }),
+      },
+    });
+  });
+
+  it("still rejects a non-conforming literal", () => {
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ status: z.enum(["draft", "published"]) }) },
+        // @ts-expect-error — "archived" is not in the enum
+        handler: () => ({ status: "archived" }),
+      },
+    });
+  });
+
+  it("rejects undefined/null when a response schema is declared", () => {
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ ok: z.boolean() }) },
+        // @ts-expect-error — undefined is not a valid response
+        handler: () => undefined,
+      },
+    });
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ ok: z.boolean() }) },
+        // @ts-expect-error — null is not a valid response
+        handler: () => null,
+      },
+    });
+  });
+
+  it("still allows undefined/null when no response schema is declared", () => {
+    defineRouteHandler({ get: { handler: () => undefined } });
+    defineRouteHandler({ get: { handler: () => null } });
+  });
+
+  it("allows undefined/null when the response schema itself is optional/nullable/nullish", () => {
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ ok: z.boolean() }).optional() },
+        handler: () => undefined,
+      },
+    });
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ ok: z.boolean() }).nullable() },
+        handler: () => null,
+      },
+    });
+    defineRouteHandler({
+      get: {
+        validate: { response: z.object({ ok: z.boolean() }).nullish() },
+        handler: () => undefined,
+      },
+    });
   });
 });

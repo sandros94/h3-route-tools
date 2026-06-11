@@ -178,3 +178,17 @@ describe("H3Typed — openapi config serves a document built from the chained ro
     expect((await app.request("/docs.json")).status).toBe(200);
   });
 });
+
+describe("H3Typed.route — preserves inline response literals (no `as const`)", () => {
+  it("enum literal and array return need no cast", () => {
+    new H3Typed().route({
+      route: "/x",
+      get: {
+        validate: {
+          response: z.object({ status: z.enum(["draft", "published"]), tags: z.array(z.string()) }),
+        },
+        handler: () => ({ status: "published", tags: ["a", "b"] }),
+      },
+    });
+  });
+});
