@@ -21,34 +21,3 @@ export function getOpenAPIDocument(app: H3): OpenAPIDocument | undefined {
     errors: config.errors,
   });
 }
-
-/** Options for {@link writeOpenAPIDocument}. */
-export interface WriteOpenAPIOptions {
-  /** JSON indentation. Default `2`; pass `0` to minify. */
-  indent?: number;
-}
-
-/**
- * Build {@link getOpenAPIDocument} and write it to `path`, returning the document.
- *
- * @throws {TypeError} if the app has no OpenAPI config.
- *
- * @example
- * import { app } from "../server"
- * await writeOpenAPIDocument(app, "openapi.json")
- */
-export async function writeOpenAPIDocument(
-  app: H3,
-  path: string,
-  options: WriteOpenAPIOptions = {},
-): Promise<OpenAPIDocument> {
-  const doc = getOpenAPIDocument(app);
-  if (!doc) {
-    throw new TypeError(
-      "writeOpenAPIDocument: app has no OpenAPI config — call defineOpenAPI or pass `openapi` to H3Typed.",
-    );
-  }
-  const { writeFile } = await import("node:fs/promises");
-  await writeFile(path, JSON.stringify(doc, null, options.indent ?? 2));
-  return doc;
-}

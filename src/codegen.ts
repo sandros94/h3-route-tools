@@ -1,14 +1,36 @@
-import ts from "typescript";
+import type { CompilerOptions, CompilerHost } from "typescript";
 import { basename, dirname, join, resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
+import type { H3 } from "h3";
+
+import { type OpenAPIDocument, getOpenAPIDocument } from "h3-typed-routes";
 
 /*
-  Flatten a route type alias to a self-contained `.d.ts` straight from the app's types — no OpenAPI,
-  no runtime. The checker won't evaluate a lazy mapped/generic type unless forced, so we wrap the
-  alias in `__Expand` (deep, but with built-ins as terminals so `Date` etc. aren't mangled) before
-  `typeToString`. `typescript` is an optional peer dep; this entry is build-time only.
+  Build-time tooling for the `h3-typed-routes/codegen` entry (Node-only, never imported at runtime):
+  - generateRoutesDts / writeRoutesDts: flatten a route type alias to a self-contained `.d.ts` from the
+    app's types. Loads the optional `typescript` peer on demand, so the rest of the entry needs no TS.
+  - writeOpenAPIDocument: run a configured app and emit its OpenAPI document to a file.
 */
 
+type TsModule = typeof import("typescript");
+
+let tsModule: TsModule | undefined;
+/** Load the optional `typescript` peer on first use; throws a clear error if it isn't installed. */
+async function loadTypeScript(): Promise<TsModule> {
+  if (!tsModule) {
+    try {
+      tsModule = (await import("typescript")).default;
+    } catch {
+      throw new Error(
+        "h3-typed-routes/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`).",
+      );
+    }
+  }
+  return tsModule;
+}
+
+// The checker won't evaluate a lazy mapped/generic type unless forced, so the alias is wrapped in
+// `__Expand` (deep, with built-ins as terminals so `Date` etc. aren't mangled) before `typeToString`.
 const EXPAND_PRELUDE = `
 type __BuiltIn = Date | RegExp | Error | URL | Map<unknown, unknown> | Set<unknown> | Promise<unknown> | ArrayBuffer | ArrayBufferView;
 type __Expand<T> = T extends __BuiltIn
@@ -32,27 +54,25 @@ export interface GenerateRoutesOptions {
   exportAs?: string;
 }
 
-function loadProject(
-  file: string,
-  tsconfig?: string,
-): { options: ts.CompilerOptions; rootNames: string[] } {
+/** Resolve the project's compiler options from the nearest (or given) tsconfig. */
+function loadProject(ts: TsModule, file: string, tsconfig?: string): CompilerOptions {
   const configPath = tsconfig
     ? resolve(tsconfig)
     : ts.findConfigFile(dirname(resolve(file)), ts.sys.fileExists, "tsconfig.json");
-  if (!configPath) return { options: { strict: true, noEmit: true }, rootNames: [] };
+  if (!configPath) return { strict: true, noEmit: true };
   const read = ts.readConfigFile(configPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(configPath));
   // Force `.ts` imports + noEmit so the virtual flatten module resolves the target regardless of
   // the project's own resolution settings.
-  const options = { ...parsed.options, noEmit: true, allowImportingTsExtensions: true };
-  return { options, rootNames: parsed.fileNames };
+  return { ...parsed.options, noEmit: true, allowImportingTsExtensions: true };
 }
 
 function withVirtualFile(
-  options: ts.CompilerOptions,
+  ts: TsModule,
+  options: CompilerOptions,
   path: string,
   content: string,
-): ts.CompilerHost {
+): CompilerHost {
   const host = ts.createCompilerHost(options);
   const getSourceFile = host.getSourceFile.bind(host);
   host.getSourceFile = (name, version, onError, shouldCreate) =>
@@ -67,10 +87,13 @@ function withVirtualFile(
 }
 
 /** Names the generated literal references that aren't resolvable standalone (leaked user types). */
-function findLeakedNames(dts: string, options: ts.CompilerOptions): string[] {
+function findLeakedNames(ts: TsModule, dts: string, options: CompilerOptions): string[] {
   const path = "__h3tr_check__.ts";
-  const host = withVirtualFile(options, path, dts);
-  const program = ts.createProgram([path], options, host);
+  // The generated dts is self-contained — it only references lib built-ins (`Date`, …), never node or
+  // package types. Drop `types` so the check program skips loading `@types/node`.
+  const checkOptions: CompilerOptions = { ...options, types: [] };
+  const host = withVirtualFile(ts, checkOptions, path, dts);
+  const program = ts.createProgram([path], checkOptions, host);
   const names = new Set<string>();
   for (const d of ts.getPreEmitDiagnostics(program)) {
     if (d.code !== 2304) continue; // TS2304: Cannot find name 'X'.
@@ -86,23 +109,29 @@ function findLeakedNames(dts: string, options: ts.CompilerOptions): string[] {
  * import-free `.d.ts` source string. Built-ins (`Date`, `Map`, …) are kept as-is; a schema that
  * infers to a user-defined *named* type (via `z.custom`/brand) can't be inlined and throws.
  *
- * @throws if the alias can't be resolved, or the result references a name not available standalone.
+ * Loads the optional `typescript` peer on first call.
+ *
+ * @throws if `typescript` is missing, the alias can't be resolved, or the result references a name
+ * not available standalone.
  *
  * @example
  * // routes.ts: export type AppRoutes = InferRoutes<typeof app>
- * const dts = generateRoutesDts({ file: "routes.ts", typeName: "AppRoutes" })
+ * const dts = await generateRoutesDts({ file: "routes.ts", typeName: "AppRoutes" })
  */
-export function generateRoutesDts(options: GenerateRoutesOptions): string {
+export async function generateRoutesDts(options: GenerateRoutesOptions): Promise<string> {
   const { file, typeName, tsconfig, exportAs = typeName } = options;
-  const { options: compilerOptions, rootNames } = loadProject(file, tsconfig);
+  const ts = await loadTypeScript();
+  const compilerOptions = loadProject(ts, file, tsconfig);
 
   const target = resolve(file);
   const virtualPath = join(dirname(target), "__h3tr_flatten__.ts");
   const importSpec = `./${basename(target)}`;
   const content = `${EXPAND_PRELUDE}\nexport type __Flat = __Expand<import(${JSON.stringify(importSpec)}).${typeName}>;\n`;
 
-  const host = withVirtualFile(compilerOptions, virtualPath, content);
-  const program = ts.createProgram([...rootNames, target, virtualPath], compilerOptions, host);
+  // The program only needs the flatten module + the target it imports — TypeScript pulls in the rest of
+  // the graph (the lib + schemas) by resolution, so we don't seed it with the whole project's files.
+  const host = withVirtualFile(ts, compilerOptions, virtualPath, content);
+  const program = ts.createProgram([target, virtualPath], compilerOptions, host);
   const checker = program.getTypeChecker();
   const source = program.getSourceFile(virtualPath);
   if (!source) throw new Error("generateRoutesDts: failed to load the flatten module.");
@@ -126,7 +155,7 @@ export function generateRoutesDts(options: GenerateRoutesOptions): string {
 
   const dts = `export type ${exportAs} = ${literal};\n`;
 
-  const leaked = findLeakedNames(dts, compilerOptions);
+  const leaked = findLeakedNames(ts, dts, compilerOptions);
   if (leaked.length) {
     throw new Error(
       `generateRoutesDts: the result references name(s) not available standalone: ${leaked.join(", ")}. ` +
@@ -146,7 +175,38 @@ export function generateRoutesDts(options: GenerateRoutesOptions): string {
 export async function writeRoutesDts(
   options: GenerateRoutesOptions & { outFile: string },
 ): Promise<string> {
-  const dts = generateRoutesDts(options);
+  const dts = await generateRoutesDts(options);
   await writeFile(options.outFile, dts);
   return dts;
+}
+
+/** Options for {@link writeOpenAPIDocument}. */
+export interface WriteOpenAPIOptions {
+  /** JSON indentation. Default `2`; pass `0` to minify. */
+  indent?: number;
+}
+
+/**
+ * Build the app's OpenAPI document (see `getOpenAPIDocument`) and write it to `path`, returning it.
+ * Runs the app, so import a built/configured app instance.
+ *
+ * @throws {TypeError} if the app has no OpenAPI config.
+ *
+ * @example
+ * import { app } from "../server"
+ * await writeOpenAPIDocument(app, "openapi.json")
+ */
+export async function writeOpenAPIDocument(
+  app: H3,
+  path: string,
+  options: WriteOpenAPIOptions = {},
+): Promise<OpenAPIDocument> {
+  const doc = getOpenAPIDocument(app);
+  if (!doc) {
+    throw new TypeError(
+      "writeOpenAPIDocument: app has no OpenAPI config — call defineOpenAPI or pass `openapi` to H3Typed.",
+    );
+  }
+  await writeFile(path, JSON.stringify(doc, null, options.indent ?? 2));
+  return doc;
 }

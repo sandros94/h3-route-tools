@@ -14,7 +14,7 @@ export default defineBuildConfig({
       input: ["./src/codegen.ts"],
       rolldown: {
         platform: "node",
-        external: ["typescript"],
+        external: ["typescript", "h3-typed-routes"],
       },
     },
   ],

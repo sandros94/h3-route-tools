@@ -1,19 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { generateRoutesDts, writeRoutesDts } from "../src/codegen.ts";
-import { app } from "./fixtures/codegen-app.ts";
+import { app as zodApp } from "./fixtures/codegen-app-zod.ts";
+import { app as valibotApp } from "./fixtures/codegen-app-valibot.ts";
 
-const opts = {
-  file: "test/fixtures/codegen-routes.ts",
-  typeName: "AppRoutes",
-  tsconfig: "tsconfig.json",
-};
+const zodRoutes = { file: "test/fixtures/codegen-routes-zod.ts", typeName: "AppRoutes" };
+const valibotRoutes = { file: "test/fixtures/codegen-routes-valibot.ts", typeName: "AppRoutes" };
 
-// Prove the fixture is a real, working app before trusting the generated types — otherwise the
-// snapshot could bless a fake. Every assertion exercises a feature the snapshot then captures.
-describe("codegen fixture app — real & runnable", () => {
+// The two fixtures are the same app authored with different Standard Schema libraries — proving both the
+// validation layer and the codegen are schema-library-agnostic. Run the full dispatch suite against each:
+// a fixture must be genuinely runnable before its generated types are worth trusting.
+describe.each([
+  ["zod", zodApp],
+  ["valibot", valibotApp],
+])("codegen fixture app (%s) — real & runnable", (_lib, app) => {
   it("GET /posts/:id returns the validated response (Date, enum, nested, array)", async () => {
     const res = await app.request("/posts/7");
     expect(res.status).toBe(200);
@@ -61,41 +63,52 @@ describe("codegen fixture app — real & runnable", () => {
   });
 });
 
-describe("generateRoutesDts — flattened, self-contained contract", () => {
-  // One compiler pass, shared across assertions.
-  const dts = generateRoutesDts(opts);
+describe("codegen output — generateRoutesDts / writeRoutesDts", () => {
+  const out = `${tmpdir()}/h3tr-codegen.d.ts`;
+  let zodDts: string;
+  let valibotDts: string;
+  let written: string;
 
-  it("matches the snapshot (regression guard for the whole flattened type)", () => {
-    expect(dts).toMatchSnapshot();
+  beforeAll(async () => {
+    // The two flatten passes are the slow part. The TypeScript compiler API is synchronous CPU work, so
+    // they serialize within this worker regardless of structure; vitest parallelizes this whole file
+    // against the rest of the suite. generateRoutesDts owns the zod contract; writeRoutesDts additionally
+    // exercises the file write on the valibot app.
+    zodDts = await generateRoutesDts(zodRoutes);
+    valibotDts = await writeRoutesDts({ ...valibotRoutes, outFile: out });
+    written = await readFile(out, "utf8");
+  });
+  afterAll(async () => {
+    await rm(out, { force: true });
+  });
+
+  it("matches the snapshot (regression guard for the whole flattened contract)", () => {
+    expect(zodDts).toMatchSnapshot();
   });
 
   it("is self-contained and faithful to schema input/output + status maps", () => {
-    expect(dts).not.toContain("import(");
-    expect(dts).not.toContain("ZodObject");
-    expect(dts).toContain("when: Date"); // built-in preserved
-    expect(dts).toContain("tags: string[]"); // GET response (output)
-    expect(dts).toContain("headers: { authorization: string;"); // validated headers
+    expect(zodDts).not.toContain("import("); // no leaked module references
+    expect(zodDts).not.toContain("ZodObject"); // schema types fully resolved
+    expect(zodDts).toContain("when: Date"); // built-in preserved
+    expect(zodDts).toContain("tags: string[]"); // GET response (output)
+    expect(zodDts).toContain("headers: { authorization: string;"); // validated headers
     // POST body is the schema INPUT (tags pre-transform: string, not string[])
-    expect(dts).toMatch(/body:\s*\{\s*title:\s*string;\s*tags:\s*string;\s*\}/);
+    expect(zodDts).toMatch(/body:\s*\{\s*title:\s*string;\s*tags:\s*string;\s*\}/);
     // multi-response → a union
-    expect(dts).toContain('{ id: number; name: string; } | { error: "not_found"; }');
-    // GET carries no body; DELETE declares no schema so it surfaces `body: unknown`. Exactly two
-    // bodies in the doc: POST (typed) + DELETE (unknown).
-    expect((dts.match(/\bbody:/g) ?? []).length).toBe(2);
-    expect(dts).toContain("body: unknown");
-    expect(dts).toContain("deleted: boolean");
+    expect(zodDts).toContain('{ id: number; name: string; } | { error: "not_found"; }');
+    // GET carries no body; DELETE declares no schema so it surfaces `body: unknown`. Exactly two bodies
+    // in the doc: POST (typed) + DELETE (unknown).
+    expect((zodDts.match(/\bbody:/g) ?? []).length).toBe(2);
+    expect(zodDts).toContain("body: unknown");
+    expect(zodDts).toContain("deleted: boolean");
   });
-});
 
-describe("writeRoutesDts", () => {
-  it("writes the .d.ts under a custom export name and returns it", async () => {
-    const out = `${tmpdir()}/h3tr-api.d.ts`;
-    try {
-      const dts = await writeRoutesDts({ ...opts, exportAs: "MyApi", outFile: out });
-      expect(dts.startsWith("export type MyApi = {")).toBe(true);
-      expect(await readFile(out, "utf8")).toBe(dts);
-    } finally {
-      await rm(out, { force: true });
-    }
+  it("writeRoutesDts writes the returned source to disk, under the exported name", () => {
+    expect(written).toBe(valibotDts);
+    expect(valibotDts.startsWith("export type AppRoutes = {")).toBe(true); // exportAs defaults to typeName
+  });
+
+  it("flattens zod and valibot to the same contract (reads Standard Schema types, not the library)", () => {
+    expect(valibotDts).toBe(zodDts);
   });
 });

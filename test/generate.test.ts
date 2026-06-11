@@ -7,7 +7,8 @@ import { z } from "zod";
 import { H3Typed } from "../src/h3-typed.ts";
 import { defineRoute } from "../src/route-handler.ts";
 import { defineOpenAPI } from "../src/define-openapi.ts";
-import { getOpenAPIDocument, writeOpenAPIDocument } from "../src/generate.ts";
+import { getOpenAPIDocument } from "../src/generate.ts";
+import { writeOpenAPIDocument } from "../src/codegen.ts";
 
 function configuredApp() {
   return new H3Typed({ openapi: { info: { title: "API", version: "1.0.0" } } }).route({
