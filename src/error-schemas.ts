@@ -5,7 +5,7 @@ import type {
   ValidationErrorPayload,
 } from "./internal/types.ts";
 
-const VENDOR = "h3-typed-routes";
+const VENDOR = "h3-route-tools";
 
 /**
  * Build a documentation-only `StandardJSONSchemaV1` from a hardcoded JSON Schema body.

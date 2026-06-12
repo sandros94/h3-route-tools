@@ -1,5 +1,5 @@
 {
-  "name": "h3-typed-routes",
+  "name": "h3-route-tools",
   "version": "0.0.0",
   "description": "Experimental library to generate typed routes for H3",
   "license": "MIT",
@@ -9,10 +9,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/sandros94/h3-typed-routes.git"
+    "url": "https://github.com/sandros94/h3-route-tools.git"
   },
   "bin": {
-    "h3-typed-routes": "./dist/cli.mjs"
+    "h3-route-tools": "./dist/cli.mjs"
   },
   "files": [
     "dist"
@@ -72,7 +72,7 @@
     }
   },
   "resolutions": {
-    "h3-typed-routes": "link:."
+    "h3-route-tools": "link:."
   },
   "simple-git-hooks": {
     "pre-commit": "./node_modules/.bin/nano-staged"

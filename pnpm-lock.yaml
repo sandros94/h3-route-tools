@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  h3-typed-routes: link:.
+  h3-route-tools: link:.
 
 importers:
 

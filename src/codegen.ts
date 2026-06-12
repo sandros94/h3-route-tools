@@ -3,10 +3,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
 import type { H3 } from "h3";
 
-import { type OpenAPIDocument, getOpenAPIDocument } from "h3-typed-routes";
+import { type OpenAPIDocument, getOpenAPIDocument } from "h3-route-tools";
 
 /*
-  Build-time tooling for the `h3-typed-routes/codegen` entry (Node-only, never imported at runtime):
+  Build-time tooling for the `h3-route-tools/codegen` entry (Node-only, never imported at runtime):
   - generateRoutesDts / writeRoutesDts: flatten a route type alias to a self-contained `.d.ts` from the
     app's types. Loads the optional `typescript` peer on demand, so the rest of the entry needs no TS.
   - writeOpenAPIDocument: run a configured app and emit its OpenAPI document to a file.
@@ -22,7 +22,7 @@ async function loadTypeScript(): Promise<TsModule> {
       tsModule = (await import("typescript")).default;
     } catch {
       throw new Error(
-        "h3-typed-routes/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`).",
+        "h3-route-tools/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`).",
       );
     }
   }

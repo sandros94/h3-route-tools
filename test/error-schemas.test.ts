@@ -24,8 +24,8 @@ describe("error schemas — common shape", () => {
     expect(readSchemaId(getStandardJSONSchema(schema, { direction: "output" }))).toBe(name);
   });
 
-  it.each(schemas)("$name uses the h3-typed-routes vendor", ({ schema }) => {
-    expect(schema["~standard"].vendor).toBe("h3-typed-routes");
+  it.each(schemas)("$name uses the h3-route-tools vendor", ({ schema }) => {
+    expect(schema["~standard"].vendor).toBe("h3-route-tools");
     expect(schema["~standard"].version).toBe(1);
   });
 

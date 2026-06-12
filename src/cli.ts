@@ -2,14 +2,14 @@
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 
-import { generateRoutesDts, writeRoutesDts, writeOpenAPIDocument } from "h3-typed-routes/codegen";
-import { getOpenAPIDocument } from "h3-typed-routes";
+import { generateRoutesDts, writeRoutesDts, writeOpenAPIDocument } from "h3-route-tools/codegen";
+import { getOpenAPIDocument } from "h3-route-tools";
 
-const HELP = `h3-typed-routes — route type-gen & OpenAPI emit
+const HELP = `h3-route-tools — route type-gen & OpenAPI emit
 
 Usage
-  h3-typed-routes types   --file <routes.ts> --type <Name> [--out <file.d.ts>]
-  h3-typed-routes openapi --app <app.ts> [--out <file.json>]
+  h3-route-tools types   --file <routes.ts> --type <Name> [--out <file.d.ts>]
+  h3-route-tools openapi --app <app.ts> [--out <file.json>]
 
 Commands
   types     Flatten a route type alias to a self-contained .d.ts (reads source; no app run).
@@ -29,7 +29,7 @@ openapi options
       --indent <n>        JSON indent (default 2; 0 minifies)
 
 A TypeScript --app must run under a loader (it is executed), e.g.
-  node --import jiti/register node_modules/h3-typed-routes/dist/cli.mjs openapi --app ./src/app.ts --out openapi.json
+  node --import jiti/register node_modules/h3-route-tools/dist/cli.mjs openapi --app ./src/app.ts --out openapi.json
 or point --app at a built .mjs, or use a runtime with native TypeScript (Node >=24, Bun, Deno).`;
 
 function fail(message: string): never {
