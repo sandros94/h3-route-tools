@@ -11,6 +11,9 @@
     "type": "git",
     "url": "https://github.com/sandros94/h3-typed-routes.git"
   },
+  "bin": {
+    "h3-typed-routes": "./dist/cli.mjs"
+  },
   "files": [
     "dist"
   ],

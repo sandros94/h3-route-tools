@@ -17,5 +17,15 @@ export default defineBuildConfig({
         external: ["typescript", "h3-typed-routes"],
       },
     },
+    {
+      type: "bundle",
+      input: ["./src/cli.ts"],
+      rolldown: {
+        platform: "node",
+        // The CLI is a thin wrapper over the package's own entries — keep them external so it doesn't
+        // re-bundle the codegen/openapi graphs.
+        external: ["h3-typed-routes", "h3-typed-routes/codegen"],
+      },
+    },
   ],
 });
