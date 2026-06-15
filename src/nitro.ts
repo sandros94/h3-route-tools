@@ -57,6 +57,46 @@ function methodLockMessage(spec: string, lock: string, declared: string[]): stri
   ].join("\n");
 }
 
+/** One route file whose `default` export is an h3-route-tools handler, recovered from nitro's types. */
+export interface CollectedRouteHandler {
+  /** The nitro route path, e.g. `"/posts/:id"`. */
+  routePath: string;
+  /** The route module's `import('…')` specifier, relative to `typesDir` (resolve to read the file). */
+  importSpecifier: string;
+  /** The callable methods the handler declares (lowercase). */
+  methods: string[];
+}
+
+/**
+ * Read nitro's generated `routes` and return the route files whose `default` export is one of ours (a
+ * `defineRouteHandler`), each with its `import('…')` specifier and declared methods. The building block
+ * the module uses to type `$fetch`; exposed so an advanced consumer (a vite plugin, a Nuxt module, a
+ * custom `types:extend` hook) can enumerate our routes and generate their own artifacts — e.g. a route
+ * map type `{ [routePath]: typeof import('<importSpecifier>').default }` for a typed client. Routes that
+ * aren't ours or whose module can't be imported are skipped; `typesDir` is the base the specifiers are
+ * relative to (typically `join(nitro.options.buildDir, "types")`).
+ */
+export async function collectRouteHandlers(
+  routes: NitroTypes["routes"],
+  typesDir: string,
+): Promise<CollectedRouteHandler[]> {
+  const collected: CollectedRouteHandler[] = [];
+  for (const [routePath, methods] of Object.entries(routes)) {
+    // A route entry references one module per method (method-locked files) or one `default` (catch-all).
+    const specifiers = new Set<string>();
+    for (const typeStrings of Object.values(methods)) {
+      const spec = routeImportSpecifier(typeStrings);
+      if (spec) specifiers.add(spec);
+    }
+    for (const importSpecifier of specifiers) {
+      const routeDef = await loadRouteDef(importSpecifier, typesDir);
+      if (!routeDef) continue;
+      collected.push({ routePath, importSpecifier, methods: declaredMethods(routeDef) });
+    }
+  }
+  return collected;
+}
+
 /**
  * Rewrite the generated route types for our routes so nitro's `$fetch`/internal `fetch` is typed from the
  * handler contract via {@link NitroMethodsOf} instead of nitro's `ReturnType` of the self-dispatcher:

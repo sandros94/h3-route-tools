@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { NitroTypes } from "nitro/types";
 
 import { defineRouteHandler } from "../src/route-handler.ts";
-import { extendRouteTypes, type NitroMethodsOf } from "../src/nitro.ts";
+import { collectRouteHandlers, extendRouteTypes, type NitroMethodsOf } from "../src/nitro.ts";
 
 describe("NitroMethodsOf — RouteHandler → nitro InternalApi value", () => {
   const handler = defineRouteHandler({
@@ -126,5 +126,36 @@ describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
     const before = structuredClone(routes);
     await extendRouteTypes(routes, typesDir);
     expect(routes).toEqual(before);
+  });
+});
+
+describe("collectRouteHandlers — programmatic route enumeration (advanced API)", () => {
+  const typesDir = resolve("test/fixtures");
+  const nitroEntry = (spec: string): NitroTypes["routes"][string] => ({
+    default: [`Simplify<Serialize<Awaited<ReturnType<typeof import('${spec}').default>>>>`],
+  });
+
+  it("returns our route files with their import specifier + declared methods", async () => {
+    const routes: NitroTypes["routes"] = {
+      "/posts/:id": nitroEntry("./nitro-route"),
+      "/single": nitroEntry("./nitro-route-get"),
+    };
+    const collected = await collectRouteHandlers(routes, typesDir);
+    expect(collected).toEqual([
+      { routePath: "/posts/:id", importSpecifier: "./nitro-route", methods: ["get", "post"] },
+      { routePath: "/single", importSpecifier: "./nitro-route-get", methods: ["get"] },
+    ]);
+  });
+
+  it("skips non-h3-route-tools and unresolvable modules", async () => {
+    const routes: NitroTypes["routes"] = {
+      "/plain": nitroEntry("./nitro-plain"),
+      "/missing": nitroEntry("./does-not-exist"),
+      "/ours": nitroEntry("./nitro-route-get"),
+    };
+    const collected = await collectRouteHandlers(routes, typesDir);
+    expect(collected).toEqual([
+      { routePath: "/ours", importSpecifier: "./nitro-route-get", methods: ["get"] },
+    ]);
   });
 });
