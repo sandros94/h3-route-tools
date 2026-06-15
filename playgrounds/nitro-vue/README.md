@@ -31,13 +31,13 @@ from one file, so nitro would otherwise emit a bogus `{ default: ReturnType<disp
 `h3-route-tools/nitro` module rewrites the entry to one accurate entry **per method**, typed from each
 method's `response` schema (with `Date → string`, etc., the way it arrives over the wire).
 
-### Who consumes it — and what's *not* typed
+### Who consumes it — and what's _not_ typed
 
 - **A framework on top (Nuxt):** declares the global `$fetch: $Fetch` / `useFetch`, auto-typed off
   `InternalApi`. Our augmentation feeds it directly.
 - **A hand-typed client (this playground, any SPA, another service):** bring your own client typed via
-  nitro's `$Fetch` — see [`app/api.ts`](./app/api.ts). That's the only bare-nitro pattern, and the one
-  this library stays unopinionated about (we type the contract; you pick the client).
+  nitro's `$Fetch` — see [`app/api.ts`](./app/api.ts) — or use our `createTypedFetch` ([see below](#two-clients-your-choice)).
+  We type the contract; you pick the client.
 - **NOT the in-process runtime fetch.** `import { fetch } from "nitro"`, `event.app.fetch()` and
   `fetchWithEvent()` all return a plain `Promise<Response>` by design — they're routers, you parse the
   `Response` yourself. There is **no** global `$fetch` and **no** `event.$fetch` in bare nitro.
@@ -51,9 +51,28 @@ export const api = ofetch as unknown as $Fetch;
 
 ```ts
 // app/pages/index.vue — typed entirely from the server contracts:
-const p = await api("/posts/7");          // { id: number; title: string; when: string }
+const p = await api("/posts/7"); // { id: number; title: string; when: string }
 const c = await api("/posts/7", { method: "post", body: { title, tags } }); // { id; tagCount }
 ```
+
+## Two clients, your choice
+
+`$Fetch` types the **response** only (`InternalApi` has no slot for request types). If you also want the
+**request** (params/body/query) typed, use our `createTypedFetch` as a peer — see
+[`app/api-typed.ts`](./app/api-typed.ts). It runs over global `fetch` + native `Response.json()`, and the
+route map is type-only (`typeof import().default`), so no server code reaches the client bundle:
+
+```ts
+// app/api-typed.ts
+type Routes = { "/posts/:id": typeof import("../routes/posts/[id]").default };
+export const typedApi = createTypedFetch<Routes>();
+// typedApi("/posts/:id", { method: "get", params: { id: 7 } }) — params/body/query AND response typed
+```
+
+Response fields are reported as their **wire** shape (a `z.date()` response is typed `string`, matching
+`$Fetch` and `.json()`). For programmatic generation of that route map (a vite plugin, a Nuxt module),
+`h3-route-tools/nitro` exports `collectRouteHandlers(routes, typesDir)` — it enumerates our routes from
+nitro's generated types so you can emit the map yourself.
 
 ## Caveats (nitro v3 beta)
 
