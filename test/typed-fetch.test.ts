@@ -144,6 +144,36 @@ describe("TypedFetch — typing over an already-resolved (code-gen) source", () 
   });
 });
 
+describe("TypedFetch — response is typed as the wire shape, not the pre-serialize shape", () => {
+  const dated = defineRoute({
+    route: "/events/:id",
+    params: z.object({ id: z.coerce.number() }),
+    get: {
+      validate: { response: z.object({ id: z.number(), when: z.date() }) },
+      handler: () => ({ id: 1, when: new Date(0) }),
+    },
+  });
+  const datedApp = new H3Typed().register(dated);
+
+  it("types a Date response field as string (matches Response.json())", () => {
+    const check = async (api: TypedFetch<typeof datedApp>) => {
+      const res = await api("/events/:id", { method: "get", params: { id: 1 } });
+      // `when` is `z.date()` (a Date pre-serialization) but arrives as a string over the wire.
+      expectTypeOf(res.json()).resolves.toEqualTypeOf<{ id: number; when: string }>();
+    };
+    void check;
+  });
+
+  it("the runtime value agrees: res.json().when is a string", async () => {
+    const api = createTypedFetch<typeof datedApp>({ fetch: datedApp.request });
+    const data = await api("/events/:id", { method: "get", params: { id: 1 } }).then((r) =>
+      r.json(),
+    );
+    expect(typeof data.when).toBe("string");
+    expect(data).toEqual({ id: 1, when: "1970-01-01T00:00:00.000Z" });
+  });
+});
+
 describe("createTypedFetch — runtime over a real app's request", () => {
   const api = createTypedFetch<typeof app>({ fetch: app.request });
 

@@ -1,5 +1,6 @@
 import type { InferRoutes, InferRoutesInput } from "./routes.ts";
 import type { Prettify } from "./internal/types.ts";
+import type { Serialize } from "./internal/serialize.ts";
 
 /** A `Response` whose `json()` resolves to the typed body `T`; everything else is the native `Response`. */
 export interface TypedResponse<T> extends Omit<Response, "json" | "clone"> {
@@ -17,8 +18,12 @@ export type NormalizeRoutes<Source> = Source extends InferRoutesInput
 
 // ─── option shape ───────────────────────────────────────────────────────────
 
-/** The response type an endpoint answers with. */
-type ResponseOf<E> = E extends { response: infer R } ? R : unknown;
+/**
+ * The response type an endpoint answers with, as it arrives over the wire: the route validates the
+ * pre-serialization value (e.g. a `Date`), but `Response.json()` yields the JSON shape (a `string`), so
+ * the response is reported through {@link Serialize}.
+ */
+type ResponseOf<E> = E extends { response: infer R } ? Serialize<R> : unknown;
 
 type Lower<M> = Lowercase<M & string>;
 /** A route's declared (lowercase) methods plus their uppercase spellings — both are accepted. */
