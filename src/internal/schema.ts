@@ -15,7 +15,9 @@ export function hasJSONSchema<T extends StandardTypedV1>(
 
 /**
  * Extract the JSON Schema representation for the given direction.
- * Returns `undefined` if the schema does not implement `StandardJSONSchemaV1`.
+ * Returns `undefined` if the schema does not implement `StandardJSONSchemaV1`, or if it cannot be
+ * represented as JSON Schema at all (some libraries throw on e.g. `Date`). Types a library can't
+ * represent (a `Date` field) degrade to a permissive schema rather than failing the whole document.
  * Default target is `draft-2020-12` (aligned with OpenAPI 3.1).
  */
 export function getStandardJSONSchema(
@@ -25,7 +27,14 @@ export function getStandardJSONSchema(
   if (!hasJSONSchema(schema)) return undefined;
   const direction = options.direction ?? "output";
   const target = options.target ?? "draft-2020-12";
-  return schema["~standard"].jsonSchema[direction]({ target });
+  try {
+    return schema["~standard"].jsonSchema[direction]({
+      target,
+      libraryOptions: { unrepresentable: "any" },
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 /**

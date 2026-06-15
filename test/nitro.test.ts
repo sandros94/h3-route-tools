@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { NitroTypes } from "nitro/types";
 
 import { defineRouteHandler } from "../src/route-handler.ts";
-import { collectRouteHandlers, extendRouteTypes, type NitroMethodsOf } from "../src/nitro.ts";
+import {
+  buildOpenAPIOverlay,
+  collectRouteHandlers,
+  extendRouteTypes,
+  type NitroMethodsOf,
+} from "../src/nitro.ts";
 
 describe("NitroMethodsOf — RouteHandler → nitro InternalApi value", () => {
   const handler = defineRouteHandler({
@@ -157,5 +162,34 @@ describe("collectRouteHandlers — programmatic route enumeration (advanced API)
     expect(collected).toEqual([
       { routePath: "/ours", importSpecifier: "./nitro-route-get", methods: ["get"] },
     ]);
+  });
+});
+
+describe("buildOpenAPIOverlay — rich OpenAPI paths from our routes' contracts", () => {
+  const typesDir = resolve("test/fixtures");
+  const nitroEntry = (spec: string): NitroTypes["routes"][string] => ({
+    default: [`Simplify<Serialize<Awaited<ReturnType<typeof import('${spec}').default>>>>`],
+  });
+
+  it("emits parameters, requestBody, and response content from the handler contract", async () => {
+    const { paths } = await buildOpenAPIOverlay(
+      { "/posts/:id": nitroEntry("./nitro-route") },
+      typesDir,
+    );
+    expect(paths["/posts/{id}"]).toMatchObject({
+      parameters: expect.arrayContaining([
+        expect.objectContaining({ name: "id", in: "path", required: true }),
+      ]),
+      get: { responses: { "200": { content: expect.anything() } } },
+      post: { requestBody: expect.anything() },
+    });
+  });
+
+  it("returns empty paths for non-ours / unresolvable routes", async () => {
+    const { paths } = await buildOpenAPIOverlay(
+      { "/plain": nitroEntry("./nitro-plain"), "/missing": nitroEntry("./does-not-exist") },
+      typesDir,
+    );
+    expect(paths).toEqual({});
   });
 });

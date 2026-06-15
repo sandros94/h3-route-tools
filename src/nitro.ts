@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import type { NitroModule, NitroTypes, Serialize, Simplify } from "nitro/types";
-import type { RouteHandler } from "h3-route-tools";
+import { buildOpenAPIDocument, type RegisteredRoute, type RouteHandler } from "h3-route-tools";
 
 /** Callable HTTP methods (mirrors the contract's `CallableMethod`; trace/connect are never fetchable). */
 const CALLABLE_METHODS = ["get", "head", "post", "put", "patch", "delete", "options"] as const;
@@ -158,16 +158,111 @@ export async function extendRouteTypes(
   }
 }
 
+/** Internal route nitro's own OpenAPI document is moved to, so ours can serve the merged result. */
+const NITRO_OPENAPI_BASE_ROUTE = "/_openapi.__h3rt-base.json";
+
+/**
+ * Build the OpenAPI `paths` + component `schemas` for our routes (rich, from each handler's contract),
+ * to merge over nitro's document. `routes`/`typesDir` come from the `types:extend` payload, as in
+ * {@link collectRouteHandlers}. Routes that aren't ours or can't be imported are skipped.
+ */
+export async function buildOpenAPIOverlay(
+  routes: NitroTypes["routes"],
+  typesDir: string,
+): Promise<{ paths: Record<string, unknown>; schemas: Record<string, unknown> }> {
+  const registered: RegisteredRoute[] = [];
+  for (const [routePath, methods] of Object.entries(routes)) {
+    const specifiers = new Set<string>();
+    for (const typeStrings of Object.values(methods)) {
+      const spec = routeImportSpecifier(typeStrings);
+      if (spec) specifiers.add(spec);
+    }
+    for (const spec of specifiers) {
+      try {
+        const mod = await import(resolve(typesDir, `${spec}.ts`));
+        if (mod.default?.["~routeDef"]) registered.push({ route: routePath, handler: mod.default });
+      } catch {
+        continue;
+      }
+    }
+  }
+  if (registered.length === 0) return { paths: {}, schemas: {} };
+  const doc = buildOpenAPIDocument({ info: { title: "", version: "" }, routes: registered });
+  return { paths: doc.paths, schemas: doc.components?.schemas ?? {} };
+}
+
+/**
+ * Source of the runtime route that serves nitro's document with our routes' path items merged over it.
+ * The merge (fetch nitro's document once, overlay our paths/components) runs lazily on first request and
+ * is cached — nitro re-runs the lazy loader on dev reload, so it stays fresh. `servers` is recomputed per
+ * request from the actual request origin (nitro's own handler, reached via the in-process sub-request,
+ * would otherwise report the sub-request's synthetic origin).
+ */
+function openAPIHandlerSource(overlayJSON: string): string {
+  return [
+    `import { defineLazyEventHandler, defineHandler, getRequestURL } from "h3";`,
+    `import { fetch } from "nitro";`,
+    `import { useRuntimeConfig } from "nitro/runtime-config";`,
+    `const overlay = ${overlayJSON};`,
+    // ufo's joinURL isn't bundled into the built server from a virtual module; inline a minimal join.
+    `const joinURL = (origin, base) => (!base || base === "/" ? origin : origin.replace(/\\/$/, "") + "/" + base.replace(/^\\/+/, ""));`,
+    `export default defineLazyEventHandler(async () => {`,
+    `  const base = await (await fetch(${JSON.stringify(NITRO_OPENAPI_BASE_ROUTE)})).json();`,
+    `  const paths = { ...base.paths, ...overlay.paths };`,
+    `  delete paths[${JSON.stringify(NITRO_OPENAPI_BASE_ROUTE)}];`,
+    `  const schemas = { ...base.components?.schemas, ...overlay.schemas };`,
+    `  const components = Object.keys(schemas).length ? { ...base.components, schemas } : base.components;`,
+    `  const doc = { ...base, paths, ...(components ? { components } : {}) };`,
+    `  const server0 = doc.servers?.[0] ?? {};`,
+    `  return defineHandler((event) => ({`,
+    `    ...doc,`,
+    `    servers: [{ ...server0, url: joinURL(getRequestURL(event).origin, useRuntimeConfig().app?.baseURL) }],`,
+    `  }));`,
+    `});`,
+  ].join("\n");
+}
+
+/**
+ * Override nitro's OpenAPI document with our richer one — only when nitro's OpenAPI is enabled
+ * (`experimental.openAPI`). nitro's document (built from `defineRouteMeta`) is reused as the base, so
+ * legacy/plain routes are preserved (graceful migration); our routes' path items — typed from each
+ * `defineRouteHandler` contract — are merged over it. nitro's existing Scalar/Swagger UIs render the
+ * result, since they fetch the same `openAPI.route`.
+ */
+function overrideOpenAPI(nitro: Parameters<NitroModule["setup"]>[0], typesDir: string): void {
+  let overlayJSON = `{"paths":{},"schemas":{}}`;
+
+  nitro.hooks.hook("types:extend", async (types) => {
+    overlayJSON = JSON.stringify(await buildOpenAPIOverlay(types.routes, typesDir));
+  });
+
+  nitro.options.virtual["#h3-route-tools/openapi"] = () => openAPIHandlerSource(overlayJSON);
+
+  nitro.hooks.hook("build:before", () => {
+    const route = nitro.options.openAPI?.route || "/_openapi.json";
+    const nitroHandler = nitro.options.handlers.find(
+      (h) => h.route === route && String(h.handler).includes("internal/routes/openapi"),
+    );
+    if (!nitroHandler) return;
+    nitroHandler.route = NITRO_OPENAPI_BASE_ROUTE;
+    nitro.options.handlers.push({ route, handler: "#h3-route-tools/openapi" });
+  });
+}
+
 /**
  * The h3-route-tools nitro module — add to `nitro.config.ts` `modules: ["h3-route-tools/nitro"]`.
- * Build-time only: types nitro's `$fetch`/internal `fetch` for routes whose `default` export is a
- * `defineRouteHandler`, and fails the build on a method-locked file whose handler declares other methods.
+ * Build-time only:
+ * - types nitro's `$fetch`/internal `fetch` for routes whose `default` export is a `defineRouteHandler`;
+ * - fails the build on a method-locked file (`x.get.ts`) whose handler declares unreachable methods;
+ * - when nitro's OpenAPI is enabled (`experimental.openAPI`), enriches its document with our routes'
+ *   contracts while keeping nitro's entries for plain/legacy routes.
  */
 export const h3RouteTools: NitroModule = {
   name: "h3-route-tools",
   setup(nitro) {
     const typesDir = join(nitro.options.buildDir, "types");
     nitro.hooks.hook("types:extend", (types) => extendRouteTypes(types.routes, typesDir));
+    if (nitro.options.experimental?.openAPI) overrideOpenAPI(nitro, typesDir);
   },
 };
 

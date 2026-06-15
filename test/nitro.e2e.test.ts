@@ -132,6 +132,41 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
   it("GET /health", async () => {
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true });
   });
+
+  it("GET /legacy — a plain nitro route is still served", async () => {
+    expect(await (await fetch(`${base}/legacy`)).json()).toEqual({ legacy: true });
+  });
+
+  // The module reroutes nitro's own OpenAPI handler and serves nitro's doc with our routes merged over it.
+  describe("merged OpenAPI document at /_openapi.json", () => {
+    it("enriches our routes from their contract (richer than nitro's bare entry)", async () => {
+      const doc = await (await fetch(`${base}/_openapi.json`)).json();
+      const posts = doc.paths["/posts/{id}"];
+      // nitro's bare entry is `{ 200: { description: "OK" } }` with no content/body/error responses.
+      // Ours adds response content, a request body, and the validation/error responses (400/500).
+      expect(posts.get.responses["200"].content).toBeDefined();
+      expect(posts.post.requestBody).toBeDefined();
+      expect(posts.get.responses["400"]).toBeDefined();
+      expect(posts.get.responses["500"]).toBeDefined();
+    });
+
+    it("preserves nitro's entry for a plain/legacy route (graceful migration)", async () => {
+      const doc = await (await fetch(`${base}/_openapi.json`)).json();
+      expect(doc.paths["/legacy"]).toBeDefined();
+      // the internal route we reroute nitro's document to is not leaked into the result
+      expect(doc.paths["/_openapi.__h3rt-base.json"]).toBeUndefined();
+    });
+
+    it("reports `servers` from the real request origin (not the in-process sub-request)", async () => {
+      const doc = await (await fetch(`${base}/_openapi.json`)).json();
+      expect(doc.servers[0].url).toContain(`127.0.0.1:${PORT}`);
+      expect(doc.servers[0].url).not.toContain("localhost");
+    });
+
+    it("nitro's Scalar UI still serves (renders the merged document)", async () => {
+      expect((await fetch(`${base}/_scalar`)).status).toBe(200);
+    });
+  });
 });
 
 // Runs last + cleans up in `finally`: a stray route file would break the other describes' prepare/build.
