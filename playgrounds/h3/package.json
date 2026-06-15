@@ -1,0 +1,15 @@
+{
+  "name": "playground-h3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.ts",
+    "start": "node index.ts"
+  },
+  "dependencies": {
+    "h3": "^2.0.1-rc.22",
+    "h3-route-tools": "workspace:*",
+    "srvx": "^0.11.15",
+    "zod": "^4.4.3"
+  }
+}

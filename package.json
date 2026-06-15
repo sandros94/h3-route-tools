@@ -35,7 +35,7 @@
   },
   "scripts": {
     "build": "obuild",
-    "dev": "pnpm -F playground dev",
+    "dev:h3": "pnpm -F playground-h3 dev",
     "dev:prepare": "obuild --stub && pnpm simple-git-hooks",
     "lint": "oxlint . && oxfmt --check .",
     "fmt": "oxlint --fix . && oxfmt .",
