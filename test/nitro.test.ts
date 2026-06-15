@@ -77,3 +77,54 @@ describe("extendRouteTypes — rewrites our routes' generated InternalApi entrie
     expect(routes["/x"]).toEqual({});
   });
 });
+
+describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
+  const typesDir = resolve("test/fixtures");
+  // Mirrors nitro's generated entry for a method-locked file: keyed by the locked method, not `default`.
+  const lockedEntry = (method: string, spec: string): Record<string, string[]> => ({
+    [method]: [`Simplify<Serialize<Awaited<ReturnType<typeof import('${spec}').default>>>>`],
+  });
+
+  it("types a valid single-method locked file from its contract", async () => {
+    const routes: NitroTypes["routes"] = { "/posts": lockedEntry("get", "./nitro-route-get") };
+    await extendRouteTypes(routes, typesDir);
+
+    const byMethod = Object.fromEntries(
+      Object.entries(routes["/posts"] ?? {}).map(([method, strings]) => [method, strings?.[0]]),
+    );
+    expect(Object.keys(byMethod)).toEqual(["get"]);
+    expect(byMethod.get).toBe(
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route-get').default>['get']`,
+    );
+  });
+
+  it("throws when a locked file declares extra methods (silently unreachable)", async () => {
+    // nitro-route declares get + post; a `*.get.ts` file would only ever route GET.
+    const routes: NitroTypes["routes"] = { "/posts": lockedEntry("get", "./nitro-route") };
+    await expect(extendRouteTypes(routes, typesDir)).rejects.toThrow(
+      /locked to GET .* declares: get, post/s,
+    );
+  });
+
+  it("throws when a locked file's single method mismatches the filename", async () => {
+    // nitro-route-get declares only get, but sits in a `*.post.ts` file.
+    const routes: NitroTypes["routes"] = { "/posts": lockedEntry("post", "./nitro-route-get") };
+    await expect(extendRouteTypes(routes, typesDir)).rejects.toThrow(
+      /locked to POST .* declares: get/s,
+    );
+  });
+
+  it("leaves a non-h3-route-tools locked handler untouched", async () => {
+    const routes: NitroTypes["routes"] = { "/plain": lockedEntry("get", "./nitro-plain") };
+    const before = structuredClone(routes);
+    await extendRouteTypes(routes, typesDir);
+    expect(routes).toEqual(before);
+  });
+
+  it("leaves a locked route whose module can't be imported untouched", async () => {
+    const routes: NitroTypes["routes"] = { "/missing": lockedEntry("get", "./does-not-exist") };
+    const before = structuredClone(routes);
+    await extendRouteTypes(routes, typesDir);
+    expect(routes).toEqual(before);
+  });
+});

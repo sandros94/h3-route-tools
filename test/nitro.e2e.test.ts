@@ -133,3 +133,35 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true });
   });
 });
+
+// Runs last + cleans up in `finally`: a stray route file would break the other describes' prepare/build.
+describe("nitro e2e — method-lock build check", () => {
+  it("fails `nitro prepare` when a method-locked file declares extra methods", () => {
+    const badRoute = resolve(PLAYGROUND, "routes/__method-lock-check.get.ts");
+    writeFileSync(
+      badRoute,
+      [
+        `import { defineRouteHandler } from "h3-route-tools";`,
+        `import * as v from "valibot";`,
+        `export default defineRouteHandler({`,
+        `  get: { validate: { response: v.object({ a: v.string() }) }, handler: () => ({ a: "x" }) },`,
+        `  post: { validate: { response: v.object({ b: v.number() }) }, handler: () => ({ b: 1 }) },`,
+        `});`,
+      ].join("\n"),
+    );
+    try {
+      let error: { stdout?: Buffer; stderr?: Buffer } | undefined;
+      try {
+        execFileSync(NITRO, ["prepare"], { cwd: PLAYGROUND, stdio: "pipe", timeout: 120_000 });
+      } catch (e) {
+        error = e as { stdout?: Buffer; stderr?: Buffer };
+      }
+      expect(error, "nitro prepare should have failed").toBeDefined();
+      const output = `${error?.stdout?.toString() ?? ""}${error?.stderr?.toString() ?? ""}`;
+      expect(output).toMatch(/method-locked route file/);
+      expect(output).toMatch(/__method-lock-check\.get.*declares: get, post/s);
+    } finally {
+      rmSync(badRoute, { force: true });
+    }
+  }, 120_000);
+});
