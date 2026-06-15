@@ -27,5 +27,13 @@ export default defineBuildConfig({
         external: ["h3-route-tools", "h3-route-tools/codegen"],
       },
     },
+    {
+      type: "bundle",
+      input: ["./src/nitro.ts"],
+      rolldown: {
+        platform: "node",
+        external: ["nitro", "nitro/types", "h3-route-tools"],
+      },
+    },
   ],
 });

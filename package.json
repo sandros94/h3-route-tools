@@ -27,6 +27,10 @@
     "./codegen": {
       "types": "./dist/codegen.d.mts",
       "import": "./dist/codegen.mjs"
+    },
+    "./nitro": {
+      "types": "./dist/nitro.d.mts",
+      "import": "./dist/nitro.mjs"
     }
   },
   "scripts": {
@@ -52,6 +56,7 @@
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
     "nano-staged": "^1.0.2",
+    "nitro": "^3.0.260610-beta",
     "obuild": "^0.4.35",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
@@ -63,10 +68,14 @@
   },
   "peerDependencies": {
     "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
+    "nitro": ">=3.0.1",
     "srvx": "^0.11.15",
     "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
+    "nitro": {
+      "optional": true
+    },
     "typescript": {
       "optional": true
     }
