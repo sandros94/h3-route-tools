@@ -15,7 +15,7 @@ import type {
   BodyValidation,
   InferInput,
   InferOutput,
-  OnValidateError,
+  OnValidationError,
   RouteMethod,
   SchemaWithJSON,
   StatusCodeKey,
@@ -23,12 +23,14 @@ import type {
   ValidatedH3Event,
 } from "./internal/types.ts";
 import {
+  resolveOnError,
   validateBody,
   validateHeaders,
   validateParams,
   validateQuery,
   validateResponse,
 } from "./internal/validate.ts";
+import type { ValidateSource } from "./internal/types.ts";
 
 export type { RouteMethod, StatusCodeKey } from "./internal/types.ts";
 
@@ -139,6 +141,8 @@ export interface PerMethodDef<
   validate?: [M] extends [BodylessMethod] ? V & { body?: never } : V;
   stream?: [M] extends [BodylessMethod] ? MethodStream & { body?: never } : MethodStream;
   meta?: H3RouteMeta;
+  /** Shape the `HTTPError` thrown on this method's validation failures; overrides the route- and app-level hook. */
+  onValidationError?: OnValidationError;
   handler: MethodHandler<V, P, RH>;
 }
 
@@ -152,6 +156,8 @@ export interface RouteHandlerDef<
   params?: P;
   middleware?: Middleware[];
   meta?: H3RouteMeta;
+  /** Default validation-error hook for every method of this route; a method's own `onValidationError` overrides it. */
+  onValidationError?: OnValidationError;
   get?: PerMethodDef<AnyMethodValidate, P, "get">;
   post?: PerMethodDef<AnyMethodValidate, P, "post">;
   put?: PerMethodDef<AnyMethodValidate, P, "put">;
@@ -225,6 +231,8 @@ export interface RouteHandlerInput<
   params?: P;
   middleware?: Middleware[];
   meta?: H3RouteMeta;
+  /** Default validation-error hook for every method of this route; a method's own `onValidationError` overrides it. */
+  onValidationError?: OnValidationError;
   // Body-allowed methods.
   put?: PerMethodDef<Put, P, "put", R["put"]>;
   post?: PerMethodDef<Post, P, "post", R["post"]>;
@@ -246,8 +254,6 @@ export type ErrorResponsesOption = false | Partial<Record<StatusCodeKey, SchemaW
 
 /** Options passed at definition time. */
 export interface RouteHandlerOptions {
-  /** Customize the `HTTPError` details thrown on any validation failure. */
-  onError?: OnValidateError;
   /** Override or opt out of the auto-registered error response schemas (400, 415, 500). */
   errors?: ErrorResponsesOption;
   /** Decode route params with `decodeURIComponent` before validation (default off, h3 parity). */
@@ -384,6 +390,7 @@ interface RuntimeMethod {
   validate?: AnyMethodValidate;
   stream?: MethodStream;
   meta?: H3RouteMeta;
+  onValidationError?: OnValidationError;
   handler: (...args: never[]) => unknown;
 }
 
@@ -429,7 +436,7 @@ export function defineRouteHandler<
     trace: def.trace,
     connect: def.connect,
   };
-  const dispatcher = makeDispatcher(def.params, methods, options, def.meta);
+  const dispatcher = makeDispatcher(def.params, methods, options, def.meta, def.onValidationError);
   return Object.assign(dispatcher, { "~routeDef": def, "~options": options });
 }
 
@@ -614,6 +621,7 @@ function makeDispatcher(
   methods: RuntimeMethods,
   options: RouteHandlerOptions,
   meta: H3RouteMeta | undefined,
+  onValidationError: OnValidationError | undefined,
 ): EventHandlerWithFetch {
   return defineHandler({
     meta,
@@ -644,7 +652,8 @@ function makeDispatcher(
         params,
         entry.validate,
         entry.stream,
-        options,
+        entry.onValidationError ?? onValidationError,
+        options.decode,
       );
       Reflect.set(event, "validated", validated);
 
@@ -657,7 +666,8 @@ function makeDispatcher(
         entry.validate?.response,
         entry.stream?.response,
         event.res.status,
-        options.onError,
+        event,
+        entry.onValidationError ?? onValidationError,
       );
 
       // HEAD: the GET path ran for side effects/headers; the body is omitted.
@@ -671,31 +681,35 @@ async function runRequestValidation(
   params: SchemaWithJSON | undefined,
   validate: AnyMethodValidate | undefined,
   stream: MethodStream | undefined,
-  options: RouteHandlerOptions,
+  onValidationError: OnValidationError | undefined,
+  decode: boolean | undefined,
 ): Promise<Record<string, unknown>> {
-  const onError = options.onError;
+  const mk = (source: ValidateSource) => resolveOnError(source, event, onValidationError);
 
   let resolvedParams: unknown;
   if (params) {
-    resolvedParams = await validateParams(event, params, { decode: options.decode, onError });
+    resolvedParams = await validateParams(event, params, {
+      decode,
+      onError: mk("params"),
+    });
     Reflect.set(event.context, "params", resolvedParams);
   } else {
     resolvedParams = event.context.params ?? {};
   }
 
   const query = validate?.query
-    ? await validateQuery(event, validate.query, { onError })
+    ? await validateQuery(event, validate.query, { onError: mk("query") })
     : getQuery(event);
 
   const headers = validate?.headers
-    ? await validateHeaders(event, validate.headers, { onError })
+    ? await validateHeaders(event, validate.headers, { onError: mk("headers") })
     : Object.fromEntries(event.req.headers.entries());
 
   if (validate?.body || stream?.body) {
     const req = validateBody(
       event.req,
       { body: validate?.body, stream: stream?.body },
-      { onError },
+      { onError: mk("body") },
     );
     Reflect.set(event, "req", req);
   }
@@ -748,7 +762,8 @@ function runResponseValidation(
   response: ResponseValidation | undefined,
   streamResponse: ResponseStreamMap | undefined,
   status: number | undefined,
-  onError: OnValidateError | undefined,
+  event: H3Event,
+  onValidationError: OnValidationError | undefined,
 ): Promise<unknown> | unknown {
   const code = status ?? 200;
 
@@ -767,7 +782,9 @@ function runResponseValidation(
     });
   }
 
-  return validateResponse(result, schema, { onError: onError ? (r) => onError(r) : undefined });
+  return validateResponse(result, schema, {
+    onError: resolveOnError("response", event, onValidationError),
+  });
 }
 
 /** A streamed return value that cannot be value-validated: a web stream, a `Response`, or an async iterable. */

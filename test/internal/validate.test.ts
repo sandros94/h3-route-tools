@@ -174,12 +174,13 @@ describe("validateResponse", () => {
     });
   });
 
-  it("invokes onError with _source 'response'", async () => {
+  it("passes a custom error builder through, still enforcing 500", async () => {
     await expect(
       validateResponse({ id: 42 }, z.object({ id: z.string() }), {
-        onError: (r) => ({ status: 500, message: `failed: ${r._source}` }),
+        // The builder is pre-resolved (source + event already bound at the route layer); 500 is forced.
+        onError: () => ({ status: 503, message: "down" }),
       }),
-    ).rejects.toMatchObject({ status: 500, message: /failed: response/ });
+    ).rejects.toMatchObject({ status: 500, message: "down" });
   });
 
   it("throws HTTPError instances", async () => {

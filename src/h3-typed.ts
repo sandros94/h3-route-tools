@@ -11,7 +11,7 @@ import {
   defineRouteHandler,
   mountRouteHandler,
 } from "./route-handler.ts";
-import type { SchemaWithJSON } from "./internal/types.ts";
+import type { OnValidationError, SchemaWithJSON } from "./internal/types.ts";
 import type { InferRouteTypes, MergePair } from "./routes.ts";
 import type { Prettify } from "./internal/types.ts";
 import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
@@ -19,6 +19,11 @@ import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
 /** {@link H3} config plus an optional `openapi` block that serves the generated document. */
 export interface H3TypedConfig extends H3Config {
   openapi?: OpenAPIPluginOptions;
+  /**
+   * Default validation-error hook for every route added via `.route()`; a route's or method's own
+   * `onError` overrides it. Named apart from h3's catch-all `onError` (which it leaves untouched).
+   */
+  onValidationError?: OnValidationError;
 }
 
 /**
@@ -34,13 +39,17 @@ export interface H3TypedConfig extends H3Config {
  * type Routes = InferRoutes<typeof app>;
  */
 export class H3Typed<Routes = {}> extends H3 {
+  readonly #onValidationError?: OnValidationError;
+
   /**
    * Create the app. Accepts every {@link H3} option, plus `openapi` — when set, the OpenAPI document
-   * is generated from the app's routes and served (default path `/openapi.json`).
+   * is generated from the app's routes and served (default path `/openapi.json`) — and
+   * `onValidationError`, a default validation-error hook for every route added via `.route()`.
    */
   constructor(config: H3TypedConfig = {}) {
-    const { openapi, ...h3Config } = config;
+    const { openapi, onValidationError, ...h3Config } = config;
     super(h3Config);
+    this.#onValidationError = onValidationError;
     if (openapi) this.register(defineOpenAPI(openapi));
   }
 
@@ -102,7 +111,10 @@ export class H3Typed<Routes = {}> extends H3 {
     >
   > {
     const { route, ...rest } = def;
-    const handler = defineRouteHandler(rest, options);
+    const handler = defineRouteHandler(
+      { ...rest, onValidationError: rest.onValidationError ?? this.#onValidationError },
+      options,
+    );
     mountRouteHandler(this, route, handler);
     return this;
   }

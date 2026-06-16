@@ -74,17 +74,28 @@ export type ValidateFunction<T, Schema extends StandardSchemaV1 = StandardSchema
   | Schema
   | ((data: unknown) => ValidateResult<T> | Promise<ValidateResult<T>>);
 
-/** Hook that transforms a validation failure into `ErrorDetails` for the thrown `HTTPError`. */
-export type OnValidateError<Source extends string = string> = (
-  result: FailureResult & { _source?: Source },
-) => ErrorDetails;
+/** The request/response part a validation failure originated from. */
+export type ValidateSource = "params" | "query" | "headers" | "body" | "response";
+
+/** Context handed to {@link OnValidationError}: which part failed, the schema issues, and the event. */
+export interface ValidationFailure {
+  source: ValidateSource;
+  issues: ValidateIssues;
+  event: H3Event;
+}
 
 /**
- * Common options for every validator function.
- * `Source` parameterizes the `_source` tag passed to `onError` (e.g. `"response"`).
+ * Hook to shape the `HTTPError` thrown on a validation failure. Return `ErrorDetails` to override the
+ * response, or nothing to fall back to the default (`400` for requests, `500` for responses).
  */
-export interface ValidateOptions<Source extends string = string> {
-  onError?: OnValidateError<Source>;
+export type OnValidationError = (failure: ValidationFailure) => ErrorDetails | void;
+
+/** Builds `ErrorDetails` from a schema failure — the resolved form the validators consume (source + event already bound). */
+export type ErrorBuilder = (result: FailureResult) => ErrorDetails;
+
+/** Options threaded into a validator: a pre-resolved {@link ErrorBuilder}. */
+export interface ValidateOptions {
+  onError?: ErrorBuilder;
 }
 
 /** Options for `getStandardJSONSchema`. */
@@ -151,7 +162,6 @@ export interface RequestValidation {
   headers?: SchemaWithJSON;
   query?: SchemaWithJSON;
   params?: SchemaWithJSON;
-  onError?: OnValidateError;
 }
 
 /** Headers and query values arrive as strings; this narrows schema output to that constraint. */

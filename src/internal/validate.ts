@@ -1,4 +1,4 @@
-import { HTTPError, getValidatedQuery, getValidatedRouterParams, type H3Event } from "h3";
+import { HTTPError, getQuery, getRouterParams, type H3Event } from "h3";
 import type { ServerRequest } from "srvx";
 import type { ErrorDetails } from "h3";
 
@@ -11,15 +11,17 @@ import {
 import { matchMediaType, PARSER_BY_MEDIA_TYPE, type ParserName } from "./media-type.ts";
 import type {
   BodyValidation,
-  FailureResult,
+  ErrorBuilder,
   InferOutput,
-  OnValidateError,
+  OnValidationError,
   SchemaWithJSON,
   StandardSchemaV1,
   StreamMap,
   ValidateFunction,
+  ValidateIssues,
   ValidateOptions,
   ValidateResult,
+  ValidateSource,
 } from "./types.ts";
 
 /**
@@ -43,9 +45,7 @@ export async function validateData<T>(
   if ("~standard" in fn) {
     const result = await fn["~standard"].validate(data);
     if (result.issues) {
-      throw createValidationError(
-        options.onError?.(result) || { message: VALIDATION_FAILED, issues: result.issues },
-      );
+      throw new HTTPError(options.onError?.(result) ?? defaultValidationError(result.issues));
     }
     return result.value;
   }
@@ -53,11 +53,8 @@ export async function validateData<T>(
   try {
     const res = await fn(data);
     if (res === false) {
-      throw createValidationError(
-        options.onError?.({ issues: [{ message: VALIDATION_FAILED }] }) || {
-          message: VALIDATION_FAILED,
-        },
-      );
+      const issues = [{ message: VALIDATION_FAILED }];
+      throw new HTTPError(options.onError?.({ issues }) ?? defaultValidationError(issues));
     }
     if (res === true || res === undefined) {
       // @ts-expect-error: predicate returned true/void means input data is valid T at runtime;
@@ -70,39 +67,48 @@ export async function validateData<T>(
   }
 }
 
-/** Adapt our source-tagged `OnValidateError` to the `(result) => ErrorDetails` shape h3's accessors expect. */
-function resolveOnError(
-  source: string,
-  onError: OnValidateError | undefined,
-): (result: FailureResult) => ErrorDetails {
-  return (result) =>
-    onError?.({ _source: source, ...result }) || {
-      status: 400,
-      statusText: VALIDATION_FAILED,
-      message: VALIDATION_FAILED,
-      data: { issues: result.issues, message: VALIDATION_FAILED },
-    };
+/** The default validation error: a `400` carrying the schema issues — used whenever `onError` overrides nothing. */
+function defaultValidationError(issues: ValidateIssues | undefined): ErrorDetails {
+  return {
+    status: 400,
+    statusText: VALIDATION_FAILED,
+    message: VALIDATION_FAILED,
+    data: { issues, message: VALIDATION_FAILED },
+  };
 }
 
-/** Validate route params via h3's accessor — eager, async, opt-in `decode` (default off, h3 parity). */
+/** The single chokepoint: bind a `source` + `event` to an `OnValidationError`, yielding the {@link ErrorBuilder} the validators consume. */
+export function resolveOnError(
+  source: ValidateSource,
+  event: H3Event,
+  onError: OnValidationError | undefined,
+): ErrorBuilder {
+  return (result) =>
+    onError?.({ source, issues: result.issues, event }) || defaultValidationError(result.issues);
+}
+
+/**
+ * Validate route params — eager, async, opt-in `decode` (default off, h3 parity). Validated with our
+ * own {@link validateData} (over h3's raw `getRouterParams`) so `onError` controls the whole error
+ * envelope, including `data`, the same as every other source.
+ */
 export function validateParams<Schema extends SchemaWithJSON>(
   event: H3Event,
   schema: Schema,
   options: ValidateOptions & { decode?: boolean } = {},
 ): Promise<InferOutput<Schema>> {
-  return getValidatedRouterParams(event, schema, {
-    decode: options.decode,
-    onError: resolveOnError("params", options.onError),
+  return validateData(getRouterParams(event, { decode: options.decode }), schema, {
+    onError: options.onError,
   });
 }
 
-/** Validate query via h3's accessor — eager, async. */
+/** Validate query — eager, async; over h3's raw `getQuery` (see {@link validateParams} on `onError`). */
 export function validateQuery<Schema extends SchemaWithJSON>(
   event: H3Event,
   schema: Schema,
   options: ValidateOptions = {},
 ): Promise<InferOutput<Schema>> {
-  return getValidatedQuery(event, schema, { onError: resolveOnError("query", options.onError) });
+  return validateData(getQuery(event), schema, { onError: options.onError });
 }
 
 /** Validate request headers — eager, async; our own (h3 has no header accessor). Headers are strings. */
@@ -112,9 +118,7 @@ export async function validateHeaders<Schema extends SchemaWithJSON>(
   options: ValidateOptions = {},
 ): Promise<InferOutput<Schema>> {
   const headers = Object.fromEntries(event.req.headers.entries());
-  return validateData(headers, schema, {
-    onError: options.onError ? (r) => options.onError!({ _source: "headers", ...r }) : undefined,
-  });
+  return validateData(headers, schema, { onError: options.onError });
 }
 
 /**
@@ -219,15 +223,10 @@ function formDataToObject(form: FormData): Record<string, FormDataEntryValue> {
 
 function throwOrReturn<T>(
   result: StandardSchemaV1.Result<T>,
-  onError: OnValidateError | undefined,
+  onError: ErrorBuilder | undefined,
 ): T {
   if (result.issues) {
-    throw createValidationError(
-      onError?.({ _source: "body", issues: result.issues }) || {
-        message: VALIDATION_FAILED,
-        issues: result.issues,
-      },
-    );
+    throw new HTTPError(onError?.(result) ?? defaultValidationError(result.issues));
   }
   return result.value;
 }
@@ -239,14 +238,10 @@ function throwOrReturn<T>(
 export async function validateResponse<Schema extends StandardSchemaV1>(
   value: unknown,
   schema: Schema,
-  options: ValidateOptions<"response"> = {},
+  options: ValidateOptions = {},
 ): Promise<InferOutput<Schema>> {
   try {
-    return await validateData(value, schema, {
-      onError: options.onError
-        ? (result) => options.onError!({ ...result, _source: "response" })
-        : undefined,
-    });
+    return await validateData(value, schema, { onError: options.onError });
   } catch (error) {
     throw new HTTPError({
       cause: error,

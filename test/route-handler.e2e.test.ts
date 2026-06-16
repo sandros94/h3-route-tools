@@ -286,18 +286,16 @@ describe("defineRoute — e2e", () => {
     expect(calls).toEqual(["mw"]);
   });
 
-  it("custom onError customizes the validation failure status", async () => {
+  it("custom onValidationError customizes the validation failure status", async () => {
     app.register(
-      defineRoute(
-        {
-          route: "/custom-error",
-          post: {
-            validate: { body: z.object({ name: z.string() }) },
-            handler: async (event) => await event.req.json(),
-          },
+      defineRoute({
+        route: "/custom-error",
+        onValidationError: () => ({ status: 422, message: "Unprocessable" }),
+        post: {
+          validate: { body: z.object({ name: z.string() }) },
+          handler: async (event) => await event.req.json(),
         },
-        { onError: () => ({ status: 422, message: "Unprocessable" }) },
-      ),
+      }),
     );
     const res = await app.request("/custom-error", {
       method: "POST",
