@@ -212,3 +212,7 @@ Validation and TypeScript types work with any Standard Schema validator. **OpenA
 - **valibot** — `@valibot/to-json-schema` throws on `pipe` / `transform` / `date` schemas, and generation then degrades the **whole containing object** to `{}`. Because coercion like `v.pipe(v.string(), v.toNumber())` is so common, valibot routes often produce empty OpenAPI schemas — even though their validation and TS types are perfectly fine.
 
 So if you rely on the generated OpenAPI (or codegen), prefer **zod** quick and dirty tests, or refer to **valibot**'s overrides for manual schema definition. Otherwise, valibot is fine for validation and TS types, and is smaller and faster than zod 😜.
+
+## License
+
+MIT
