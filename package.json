@@ -1,6 +1,6 @@
 {
   "name": "h3-route-tools",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Experimental library to generate typed routes for H3",
   "keywords": [
     "h3",
