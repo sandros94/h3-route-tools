@@ -148,7 +148,7 @@ describe("validation errors — the event is available to the hook", () => {
       get: { handler: () => ({ ok: true }) },
     });
     const res = await app.request(
-      new Request("http://test/p/abc", { headers: { "x-trace": "abc-123" } }),
+      new Request("http://test/p/abc", { headers: { "x-trace": "abc-123" } })
     );
     expect((await res.json()).data.trace).toBe("abc-123");
   });
@@ -199,7 +199,7 @@ describe("validation errors — defineRoute carries the route-level onValidation
         params,
         onValidationError: ({ source }) => ({ status: 422, message: source }),
         get: { handler: () => ({ ok: true }) },
-      }),
+      })
     );
     const res = await app.request("/p/abc");
     expect(res.status).toBe(422);

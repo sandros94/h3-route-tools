@@ -22,7 +22,7 @@ async function loadTypeScript(): Promise<TsModule> {
       tsModule = (await import("typescript")).default;
     } catch {
       throw new Error(
-        "h3-route-tools/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`).",
+        "h3-route-tools/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`)."
       );
     }
   }
@@ -71,7 +71,7 @@ function withVirtualFile(
   ts: TsModule,
   options: CompilerOptions,
   path: string,
-  content: string,
+  content: string
 ): CompilerHost {
   const host = ts.createCompilerHost(options);
   const getSourceFile = host.getSourceFile.bind(host);
@@ -143,13 +143,13 @@ export async function generateRoutesDts(options: GenerateRoutesOptions): Promise
       literal = checker.typeToString(
         type,
         node,
-        ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.InTypeAlias,
+        ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.InTypeAlias
       );
     }
   });
   if (!literal || literal === "any") {
     throw new Error(
-      `generateRoutesDts: could not resolve type \`${typeName}\` exported from ${file}.`,
+      `generateRoutesDts: could not resolve type \`${typeName}\` exported from ${file}.`
     );
   }
 
@@ -159,12 +159,12 @@ export async function generateRoutesDts(options: GenerateRoutesOptions): Promise
   if (leaked.length) {
     throw new Error(
       `generateRoutesDts: the result references name(s) not available standalone: ${leaked.join(", ")}. ` +
-        `A schema infers to a user-defined named type — make it structural, or define the type in the output file.`,
+        `A schema infers to a user-defined named type — make it structural, or define the type in the output file.`
     );
   }
   if (/\bany\b/.test(literal)) {
     console.warn(
-      `generateRoutesDts: some types degraded to \`any\` (usually a recursive schema — a TypeScript inference limit).`,
+      `generateRoutesDts: some types degraded to \`any\` (usually a recursive schema — a TypeScript inference limit).`
     );
   }
 
@@ -173,7 +173,7 @@ export async function generateRoutesDts(options: GenerateRoutesOptions): Promise
 
 /** {@link generateRoutesDts} written to `outFile`, returning the source. */
 export async function writeRoutesDts(
-  options: GenerateRoutesOptions & { outFile: string },
+  options: GenerateRoutesOptions & { outFile: string }
 ): Promise<string> {
   const dts = await generateRoutesDts(options);
   await writeFile(options.outFile, dts);
@@ -199,12 +199,12 @@ export interface WriteOpenAPIOptions {
 export async function writeOpenAPIDocument(
   app: H3,
   path: string,
-  options: WriteOpenAPIOptions = {},
+  options: WriteOpenAPIOptions = {}
 ): Promise<OpenAPIDocument> {
   const doc = getOpenAPIDocument(app);
   if (!doc) {
     throw new TypeError(
-      "writeOpenAPIDocument: app has no OpenAPI config — call defineOpenAPI or pass `openapi` to H3Typed.",
+      "writeOpenAPIDocument: app has no OpenAPI config — call defineOpenAPI or pass `openapi` to H3Typed."
     );
   }
   await writeFile(path, JSON.stringify(doc, null, options.indent ?? 2));

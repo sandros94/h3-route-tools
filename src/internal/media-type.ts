@@ -16,7 +16,7 @@ export function parseMediaType(contentType: string | null | undefined): string |
  */
 export function matchMediaType(
   declared: readonly string[],
-  options: { against: string | null | undefined },
+  options: { against: string | null | undefined }
 ): string | undefined {
   const parsed = parseMediaType(options.against);
   if (!parsed) return undefined;

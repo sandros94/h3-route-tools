@@ -133,7 +133,7 @@ export function toOpenAPIPath(route: string): string {
  */
 export function schemaToParameters(
   schema: SchemaWithJSON,
-  options: { in: "query" | "header" | "path" },
+  options: { in: "query" | "header" | "path" }
 ): OpenAPIParameter[] {
   const json = getStandardJSONSchema(schema);
   const properties = asRecord(json?.["properties"]);
@@ -150,7 +150,7 @@ export function schemaToParameters(
 /** Convert one method definition to an OpenAPI Operation Object. */
 export function toOpenAPIOperation(
   method: DocumentableMethodDef,
-  options: { hasRouteParams?: boolean; errors?: ErrorResponsesOption } = {},
+  options: { hasRouteParams?: boolean; errors?: ErrorResponsesOption } = {}
 ): OpenAPIOperation {
   const validate = method.validate;
   const body: BodyValidation | undefined = validate?.body;
@@ -188,7 +188,7 @@ export function toOpenAPIOperation(
 /** Convert a documentable route handler to an OpenAPI Path Item Object. */
 export function toOpenAPIPathItem(
   handler: DocumentableRouteHandler,
-  options: { errors?: ErrorResponsesOption } = {},
+  options: { errors?: ErrorResponsesOption } = {}
 ): OpenAPIPathItem {
   const def = handler["~routeDef"];
   const errors = handler["~options"]?.errors ?? options.errors;
@@ -235,7 +235,7 @@ export function buildOpenAPIDocument(options: {
 
 function toRequestBody(
   body: BodyValidation | undefined,
-  stream: StreamMap | undefined,
+  stream: StreamMap | undefined
 ): OpenAPIRequestBody {
   const content: Record<string, OpenAPIMediaType> = {};
   if (body) {
@@ -275,7 +275,7 @@ function isDocSchema(doc: StandardJSONSchemaV1 | JSONSchemaDocument): doc is Sta
 function toResponses(
   response: ResponseValidation | undefined,
   streamResponse: ResponseStreamMap | undefined,
-  autoErrors: Array<[string, StandardTypedV1]>,
+  autoErrors: Array<[string, StandardTypedV1]>
 ): Record<string, OpenAPIResponse> {
   const responses: Record<string, OpenAPIResponse> = {};
 

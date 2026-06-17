@@ -30,17 +30,17 @@ import type {
 export async function validateData<Schema extends StandardSchemaV1>(
   data: unknown,
   fn: Schema,
-  options?: ValidateOptions,
+  options?: ValidateOptions
 ): Promise<InferOutput<Schema>>;
 export async function validateData<T>(
   data: unknown,
   fn: (data: unknown) => ValidateResult<T> | Promise<ValidateResult<T>>,
-  options?: ValidateOptions,
+  options?: ValidateOptions
 ): Promise<T>;
 export async function validateData<T>(
   data: unknown,
   fn: ValidateFunction<T>,
-  options: ValidateOptions = {},
+  options: ValidateOptions = {}
 ): Promise<T> {
   if ("~standard" in fn) {
     const result = await fn["~standard"].validate(data);
@@ -81,7 +81,7 @@ function defaultValidationError(issues: ValidateIssues | undefined): ErrorDetail
 export function resolveOnError(
   source: ValidateSource,
   event: H3Event,
-  onError: OnValidationError | undefined,
+  onError: OnValidationError | undefined
 ): ErrorBuilder {
   return (result) =>
     onError?.({ source, issues: result.issues, event }) || defaultValidationError(result.issues);
@@ -95,7 +95,7 @@ export function resolveOnError(
 export function validateParams<Schema extends SchemaWithJSON>(
   event: H3Event,
   schema: Schema,
-  options: ValidateOptions & { decode?: boolean } = {},
+  options: ValidateOptions & { decode?: boolean } = {}
 ): Promise<InferOutput<Schema>> {
   return validateData(getRouterParams(event, { decode: options.decode }), schema, {
     onError: options.onError,
@@ -106,7 +106,7 @@ export function validateParams<Schema extends SchemaWithJSON>(
 export function validateQuery<Schema extends SchemaWithJSON>(
   event: H3Event,
   schema: Schema,
-  options: ValidateOptions = {},
+  options: ValidateOptions = {}
 ): Promise<InferOutput<Schema>> {
   return validateData(getQuery(event), schema, { onError: options.onError });
 }
@@ -115,7 +115,7 @@ export function validateQuery<Schema extends SchemaWithJSON>(
 export async function validateHeaders<Schema extends SchemaWithJSON>(
   event: H3Event,
   schema: Schema,
-  options: ValidateOptions = {},
+  options: ValidateOptions = {}
 ): Promise<InferOutput<Schema>> {
   const headers = Object.fromEntries(event.req.headers.entries());
   return validateData(headers, schema, { onError: options.onError });
@@ -132,7 +132,7 @@ export async function validateHeaders<Schema extends SchemaWithJSON>(
 export function validateBody(
   req: ServerRequest,
   validation: { body?: BodyValidation; stream?: StreamMap },
-  options: ValidateOptions = {},
+  options: ValidateOptions = {}
 ): ServerRequest {
   const { body, stream } = validation;
   if (body && isSchema(body)) {
@@ -160,7 +160,7 @@ function isSchema(value: object): value is SchemaWithJSON {
 function wrapBareJSON(
   req: ServerRequest,
   schema: SchemaWithJSON,
-  options: ValidateOptions,
+  options: ValidateOptions
 ): ServerRequest {
   return new Proxy(req, {
     get(target, prop: keyof ServerRequest) {
@@ -181,7 +181,7 @@ function wrapMatched(
   req: ServerRequest,
   mediaType: string,
   schema: SchemaWithJSON,
-  options: ValidateOptions,
+  options: ValidateOptions
 ): ServerRequest {
   const parser: ParserName = PARSER_BY_MEDIA_TYPE[mediaType.toLowerCase()] ?? "arrayBuffer";
 
@@ -223,7 +223,7 @@ function formDataToObject(form: FormData): Record<string, FormDataEntryValue> {
 
 function throwOrReturn<T>(
   result: StandardSchemaV1.Result<T>,
-  onError: ErrorBuilder | undefined,
+  onError: ErrorBuilder | undefined
 ): T {
   if (result.issues) {
     throw new HTTPError(onError?.(result) ?? defaultValidationError(result.issues));
@@ -238,7 +238,7 @@ function throwOrReturn<T>(
 export async function validateResponse<Schema extends StandardSchemaV1>(
   value: unknown,
   schema: Schema,
-  options: ValidateOptions = {},
+  options: ValidateOptions = {}
 ): Promise<InferOutput<Schema>> {
   try {
     return await validateData(value, schema, { onError: options.onError });

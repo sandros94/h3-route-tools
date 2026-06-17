@@ -8,7 +8,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/sp
  */
 export function defineSchema<I, O>(
   name: string,
-  schema: StandardSchemaV1<I, O> & StandardJSONSchemaV1<I, O>,
+  schema: StandardSchemaV1<I, O> & StandardJSONSchemaV1<I, O>
 ): StandardSchemaV1<I, O> & StandardJSONSchemaV1<I, O> {
   const inner = schema["~standard"];
 

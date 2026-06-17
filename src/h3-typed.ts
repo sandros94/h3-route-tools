@@ -61,7 +61,7 @@ export class H3Typed<Routes = {}> extends H3 {
    * @example app.register(defineRoute({ route: "/health", get: { handler: () => "ok" } }))
    */
   override register<P extends RoutePlugin>(
-    plugin: P,
+    plugin: P
   ): H3Typed<Prettify<MergePair<Routes, InferRouteTypes<P>>>>;
   override register(plugin: H3Plugin): this;
   override register(plugin: H3Plugin): this {
@@ -101,7 +101,7 @@ export class H3Typed<Routes = {}> extends H3 {
     def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
       route: R;
     } & Record<K, unknown>,
-    options: RouteHandlerOptions = {},
+    options: RouteHandlerOptions = {}
   ): H3Typed<
     Prettify<
       MergePair<
@@ -113,7 +113,7 @@ export class H3Typed<Routes = {}> extends H3 {
     const { route, ...rest } = def;
     const handler = defineRouteHandler(
       { ...rest, onValidationError: rest.onValidationError ?? this.#onValidationError },
-      options,
+      options
     );
     mountRouteHandler(this, route, handler);
     return this;

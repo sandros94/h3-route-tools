@@ -77,7 +77,7 @@ describe("writeOpenAPIDocument", () => {
 
   it("throws when the app has no OpenAPI config", async () => {
     await expect(writeOpenAPIDocument(new H3(), `${tmpdir()}/h3tr-nope.json`)).rejects.toThrow(
-      /no OpenAPI config/,
+      /no OpenAPI config/
     );
   });
 });

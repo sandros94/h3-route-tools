@@ -35,10 +35,10 @@ describe("schemaToParameters", () => {
       in: "query",
     });
     expect(params).toContainEqual(
-      expect.objectContaining({ name: "limit", in: "query", required: true }),
+      expect.objectContaining({ name: "limit", in: "query", required: true })
     );
     expect(params).toContainEqual(
-      expect.objectContaining({ name: "q", in: "query", required: false }),
+      expect.objectContaining({ name: "q", in: "query", required: false })
     );
   });
 
@@ -189,7 +189,7 @@ describe("toOpenAPIOperation", () => {
       {
         validate: { body: z.object({ name: z.string() }), response: z.object({ ok: z.boolean() }) },
       },
-      { errors: false },
+      { errors: false }
     );
     expect(op.responses?.["400"]).toBeUndefined();
     expect(op.responses?.["500"]).toBeUndefined();
@@ -223,7 +223,7 @@ describe("toOpenAPIPathItem", () => {
     });
     const item = toOpenAPIPathItem(handler);
     expect(item.parameters).toContainEqual(
-      expect.objectContaining({ name: "id", in: "path", required: true }),
+      expect.objectContaining({ name: "id", in: "path", required: true })
     );
     expect(item.get).toBeDefined();
     expect(item.post?.requestBody).toBeDefined();
@@ -232,7 +232,7 @@ describe("toOpenAPIPathItem", () => {
   it("respects the route handler's own errors option", () => {
     const handler = defineRouteHandler(
       { post: { validate: { body: z.object({ name: z.string() }) }, handler: () => ({}) } },
-      { errors: false },
+      { errors: false }
     );
     const item = toOpenAPIPathItem(handler);
     expect(item.post?.responses?.["400"]).toBeUndefined();
@@ -247,7 +247,7 @@ describe("toOpenAPIPathItem", () => {
 
   it("does not emit operations for head: false / options: false", () => {
     const item = toOpenAPIPathItem(
-      defineRouteHandler({ get: { handler: () => "g" }, head: false, options: false }),
+      defineRouteHandler({ get: { handler: () => "g" }, head: false, options: false })
     );
     expect(item.head).toBeUndefined();
     expect(item.options).toBeUndefined();
@@ -258,7 +258,7 @@ describe("toOpenAPIPathItem", () => {
       defineRouteHandler({
         get: { handler: () => "g" },
         options: { meta: { openapi: { summary: "Custom preflight" } }, handler: () => null },
-      }),
+      })
     );
     expect(item.options).toBeDefined();
     expect(item.options?.summary).toBe("Custom preflight");
@@ -311,7 +311,7 @@ describe("buildOpenAPIDocument", () => {
     const doc = buildOpenAPIDocument({ info, routes: routes({ route: "/users", handler }) });
     expect(doc.components?.schemas?.["ValidationError"]).toBeDefined();
     expect(
-      doc.paths["/users"]?.post?.responses?.["400"]?.content?.["application/json"]?.schema,
+      doc.paths["/users"]?.post?.responses?.["400"]?.content?.["application/json"]?.schema
     ).toEqual({ $ref: "#/components/schemas/ValidationError" });
   });
 

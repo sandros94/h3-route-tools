@@ -24,25 +24,25 @@ describe("parseMediaType", () => {
 describe("matchMediaType", () => {
   it("returns the declared key for an exact match (preserving original casing)", () => {
     expect(matchMediaType(["application/json"], { against: "application/json" })).toBe(
-      "application/json",
+      "application/json"
     );
     expect(matchMediaType(["Application/JSON"], { against: "application/json" })).toBe(
-      "Application/JSON",
+      "Application/JSON"
     );
   });
 
   it("matches when incoming carries parameters", () => {
     expect(
-      matchMediaType(["application/json"], { against: "application/json; charset=utf-8" }),
+      matchMediaType(["application/json"], { against: "application/json; charset=utf-8" })
     ).toBe("application/json");
     expect(
-      matchMediaType(["multipart/form-data"], { against: "multipart/form-data; boundary=---x" }),
+      matchMediaType(["multipart/form-data"], { against: "multipart/form-data; boundary=---x" })
     ).toBe("multipart/form-data");
   });
 
   it("supports declared-side wildcards (type/*)", () => {
     expect(matchMediaType(["application/*"], { against: "application/json" })).toBe(
-      "application/*",
+      "application/*"
     );
     expect(matchMediaType(["text/*"], { against: "text/plain" })).toBe("text/*");
     expect(matchMediaType(["text/*"], { against: "application/json" })).toBeUndefined();
@@ -57,10 +57,10 @@ describe("matchMediaType", () => {
 
   it("prefers the first declared match on order", () => {
     expect(
-      matchMediaType(["application/*", "application/json"], { against: "application/json" }),
+      matchMediaType(["application/*", "application/json"], { against: "application/json" })
     ).toBe("application/*");
     expect(
-      matchMediaType(["application/json", "application/*"], { against: "application/json" }),
+      matchMediaType(["application/json", "application/*"], { against: "application/json" })
     ).toBe("application/json");
   });
 });

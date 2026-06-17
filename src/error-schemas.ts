@@ -13,7 +13,7 @@ const VENDOR = "h3-route-tools";
  * the server produces, not bodies the server accepts.
  */
 function staticSchema<Payload>(
-  body: Readonly<Record<string, unknown>>,
+  body: Readonly<Record<string, unknown>>
 ): StandardJSONSchemaV1<Payload, Payload> {
   return {
     "~standard": {

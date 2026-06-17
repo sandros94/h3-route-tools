@@ -37,7 +37,7 @@ describe("defineRoute — e2e", () => {
         route: "/multi",
         get: { handler: () => "got" },
         post: { handler: () => "posted" },
-      }),
+      })
     );
     expect(await (await app.request("/multi")).text()).toBe("got");
     expect(await (await app.request("/multi", { method: "POST" })).text()).toBe("posted");
@@ -59,7 +59,7 @@ describe("defineRoute — e2e", () => {
       defineRouteHandler({
         get: { handler: () => "got" },
         post: { handler: () => "posted" },
-      }),
+      })
     );
     expect(await (await app.request("/u")).text()).toBe("got");
     expect(await (await app.request("/u", { method: "POST" })).text()).toBe("posted");
@@ -78,7 +78,7 @@ describe("defineRoute — e2e", () => {
       defineRouteHandler({
         get: { handler: () => "got" },
         post: { handler: () => "posted" },
-      }),
+      })
     );
     expect(await (await app.request("/u")).text()).toBe("got");
     expect((await app.request("/u", { method: "POST" })).status).toBe(404);
@@ -97,7 +97,7 @@ describe("defineRoute — e2e", () => {
             doubled: event.context.params.id * 2,
           }),
         },
-      }),
+      })
     );
     expect(await (await app.request("/items/21")).json()).toEqual({
       ctx: 21,
@@ -114,7 +114,7 @@ describe("defineRoute — e2e", () => {
           validate: { query: z.object({ limit: z.coerce.number() }) },
           handler: (event) => ({ limit: event.validated.query.limit }),
         },
-      }),
+      })
     );
     expect(await (await app.request("/search?limit=10")).json()).toEqual({ limit: 10 });
     expect((await app.request("/search?limit=abc")).status).toBe(400);
@@ -128,7 +128,7 @@ describe("defineRoute — e2e", () => {
           validate: { body: z.object({ name: z.string() }) },
           handler: async (event) => ({ received: (await event.req.json()).name }),
         },
-      }),
+      })
     );
     const ok = await app.request("/users", {
       method: "POST",
@@ -160,7 +160,7 @@ describe("defineRoute — e2e", () => {
             reason: (await event.req.json()).reason,
           }),
         },
-      }),
+      })
     );
     const ok = await app.request("/res/9", {
       method: "DELETE",
@@ -188,7 +188,7 @@ describe("defineRoute — e2e", () => {
           },
           handler: async (event) => ({ echoed: (await event.req.json()).probe }),
         },
-      }),
+      })
     );
     const res = await app.request("/probe", {
       method: "OPTIONS",
@@ -207,7 +207,7 @@ describe("defineRoute — e2e", () => {
           validate: { body: { "application/json": z.object({ name: z.string() }) } },
           handler: async (event) => await event.req.json(),
         },
-      }),
+      })
     );
     const wrong = await app.request("/strict", {
       method: "POST",
@@ -226,7 +226,7 @@ describe("defineRoute — e2e", () => {
           // @ts-expect-error: deliberately returns the wrong type to exercise the 500 path.
           handler: () => ({ id: 123 }),
         },
-      }),
+      })
     );
     expect((await app.request("/broken")).status).toBe(500);
   });
@@ -240,7 +240,7 @@ describe("defineRoute — e2e", () => {
 
   it("auto-answers OPTIONS with 204 + Allow", async () => {
     app.register(
-      defineRoute({ route: "/opt", get: { handler: () => "g" }, post: { handler: () => "p" } }),
+      defineRoute({ route: "/opt", get: { handler: () => "g" }, post: { handler: () => "p" } })
     );
     const res = await app.request("/opt", { method: "OPTIONS" });
     expect(res.status).toBe(204);
@@ -280,7 +280,7 @@ describe("defineRoute — e2e", () => {
           },
         ],
         get: { handler: () => "ok" },
-      }),
+      })
     );
     await app.request("/mw");
     expect(calls).toEqual(["mw"]);
@@ -295,7 +295,7 @@ describe("defineRoute — e2e", () => {
           validate: { body: z.object({ name: z.string() }) },
           handler: async (event) => await event.req.json(),
         },
-      }),
+      })
     );
     const res = await app.request("/custom-error", {
       method: "POST",
@@ -320,7 +320,7 @@ describe("defineRoute — e2e", () => {
             return countBytes(event.req.body);
           },
         },
-      }),
+      })
     );
     const res = await app.request("/upload", {
       method: "POST",
@@ -345,7 +345,7 @@ describe("defineRoute — e2e", () => {
               },
             }),
         },
-      }),
+      })
     );
     const res = await app.request("/events");
     expect(res.status).toBe(200);
@@ -361,7 +361,7 @@ describe("defineRoute — e2e", () => {
           // @ts-expect-error: a ReadableStream can't satisfy the declared object response schema.
           handler: () => new ReadableStream(),
         },
-      }),
+      })
     );
     expect((await app.request("/bad-stream")).status).toBe(500);
   });

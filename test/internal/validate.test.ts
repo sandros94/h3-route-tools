@@ -39,7 +39,7 @@ describe("validateData", () => {
     await expect(
       validateData({ id: 42 }, z.object({ id: z.string() }), {
         onError: () => ({ status: 422, message: "Custom" }),
-      }),
+      })
     ).rejects.toMatchObject({ status: 422, message: "Custom" });
   });
 
@@ -55,7 +55,7 @@ describe("validateBody — bare schema (lazy, JSON-only)", () => {
   it("validates .json() lazily and returns the value", async () => {
     const req = validateBody(
       makeRequest({ body: JSON.stringify({ name: "Alice" }), contentType: "application/json" }),
-      { body: schema },
+      { body: schema }
     );
     await expect(req.json()).resolves.toEqual({ name: "Alice" });
   });
@@ -63,7 +63,7 @@ describe("validateBody — bare schema (lazy, JSON-only)", () => {
   it("throws 400 when the payload fails validation", async () => {
     const req = validateBody(
       makeRequest({ body: JSON.stringify({ name: 42 }), contentType: "application/json" }),
-      { body: schema },
+      { body: schema }
     );
     await expect(req.json()).rejects.toMatchObject({ status: 400 });
   });
@@ -82,7 +82,7 @@ describe("validateBody — media-type map (strict)", () => {
   it("matches application/json and validates", async () => {
     const req = validateBody(
       makeRequest({ body: JSON.stringify({ name: "Bob" }), contentType: "application/json" }),
-      { body: { "application/json": json } },
+      { body: { "application/json": json } }
     );
     await expect(req.json()).resolves.toEqual({ name: "Bob" });
   });
@@ -91,7 +91,7 @@ describe("validateBody — media-type map (strict)", () => {
     expect(() =>
       validateBody(makeRequest({ contentType: "text/csv" }), {
         body: { "application/json": json },
-      }),
+      })
     ).toThrow(/Unsupported Media Type|415/i);
   });
 
@@ -101,7 +101,7 @@ describe("validateBody — media-type map (strict)", () => {
         body: JSON.stringify({ name: "Dan" }),
         contentType: "application/json; charset=utf-8",
       }),
-      { body: { "application/json": json } },
+      { body: { "application/json": json } }
     );
     await expect(req.json()).resolves.toEqual({ name: "Dan" });
   });
@@ -121,7 +121,7 @@ describe("validateBody — streaming entries (never buffered)", () => {
         stream: {
           "application/x-ndjson": { type: "object", properties: { id: { type: "string" } } },
         },
-      }),
+      })
     ).toBe(req);
   });
 
@@ -129,7 +129,7 @@ describe("validateBody — streaming entries (never buffered)", () => {
     expect(() =>
       validateBody(makeRequest({ contentType: "text/csv" }), {
         stream: { "application/octet-stream": true },
-      }),
+      })
     ).toThrow(/415|Unsupported/i);
   });
 
@@ -140,12 +140,12 @@ describe("validateBody — streaming entries (never buffered)", () => {
       validateBody(streamed, {
         body: { "application/json": json },
         stream: { "application/octet-stream": true },
-      }),
+      })
     ).toBe(streamed);
 
     const validated = validateBody(
       makeRequest({ body: JSON.stringify({ name: "Zoe" }), contentType: "application/json" }),
-      { body: { "application/json": json }, stream: { "application/octet-stream": true } },
+      { body: { "application/json": json }, stream: { "application/octet-stream": true } }
     );
     await expect(validated.json()).resolves.toEqual({ name: "Zoe" });
   });
@@ -155,7 +155,7 @@ describe("validateBody — valibot (no JSON Schema)", () => {
   it("validates correctly when the schema lacks ~standard.jsonSchema", async () => {
     const req = validateBody(
       makeRequest({ body: JSON.stringify({ name: "Eve" }), contentType: "application/json" }),
-      { body: v.object({ name: v.string() }) },
+      { body: v.object({ name: v.string() }) }
     );
     await expect(req.json()).resolves.toEqual({ name: "Eve" });
   });
@@ -179,13 +179,13 @@ describe("validateResponse", () => {
       validateResponse({ id: 42 }, z.object({ id: z.string() }), {
         // The builder is pre-resolved (source + event already bound at the route layer); 500 is forced.
         onError: () => ({ status: 503, message: "down" }),
-      }),
+      })
     ).rejects.toMatchObject({ status: 500, message: "down" });
   });
 
   it("throws HTTPError instances", async () => {
     await expect(validateResponse({ id: 42 }, z.object({ id: z.string() }))).rejects.toBeInstanceOf(
-      HTTPError,
+      HTTPError
     );
   });
 });

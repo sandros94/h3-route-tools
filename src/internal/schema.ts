@@ -8,7 +8,7 @@ import type { GetJSONSchemaOptions } from "./types.ts";
  * so both validation-capable schemas and doc-only schemas can be introspected.
  */
 export function hasJSONSchema<T extends StandardTypedV1>(
-  schema: T,
+  schema: T
 ): schema is T & StandardJSONSchemaV1<unknown, unknown> {
   return "jsonSchema" in schema["~standard"];
 }
@@ -22,7 +22,7 @@ export function hasJSONSchema<T extends StandardTypedV1>(
  */
 export function getStandardJSONSchema(
   schema: StandardTypedV1,
-  options: GetJSONSchemaOptions = {},
+  options: GetJSONSchemaOptions = {}
 ): Record<string, unknown> | undefined {
   if (!hasJSONSchema(schema)) return undefined;
   const direction = options.direction ?? "output";

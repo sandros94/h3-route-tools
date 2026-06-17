@@ -17,7 +17,7 @@ import type {
  */
 export function extractComponents(
   jsonSchema: JSONSchemaDocument,
-  options: ExtractComponentsOptions = {},
+  options: ExtractComponentsOptions = {}
 ): ExtractComponentsResult {
   const components: ComponentsRegistry = { ...options.components };
   const id = readId(jsonSchema);
@@ -46,7 +46,7 @@ function walk(node: unknown, components: ComponentsRegistry): unknown {
 function storeIfAbsent(
   id: string,
   node: Record<string, unknown>,
-  components: ComponentsRegistry,
+  components: ComponentsRegistry
 ): void {
   if (Object.prototype.hasOwnProperty.call(components, id)) return;
   // Reserve the slot before recursing — handles cyclic schemas where a $id'd node
@@ -61,7 +61,7 @@ function refFor(id: string): string {
 
 function walkChildren(
   obj: Record<string, unknown>,
-  components: ComponentsRegistry,
+  components: ComponentsRegistry
 ): JSONSchemaDocument {
   const out: JSONSchemaDocument = {};
   for (const [key, value] of Object.entries(obj)) {

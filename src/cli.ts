@@ -72,13 +72,13 @@ async function loadApp(path: string, exportName?: string): Promise<unknown> {
     throw new Error(
       `openapi: failed to import ${path}. If it is TypeScript, run under a loader ` +
         `(e.g. \`node --import jiti/register …\`) or point --app at a built .mjs.`,
-      { cause },
+      { cause }
     );
   }
   const app = exportName ? mod[exportName] : (mod.app ?? mod.default);
   if (!app) {
     fail(
-      `openapi: no app found in ${path} (looked for a \`app\` or default export; use --export <name>).`,
+      `openapi: no app found in ${path} (looked for a \`app\` or default export; use --export <name>).`
     );
   }
   return app;

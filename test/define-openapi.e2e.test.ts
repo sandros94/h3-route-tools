@@ -43,13 +43,13 @@ describe("defineOpenAPI — e2e", () => {
         route: "/users/:id",
         params: z.object({ id: z.string() }),
         get: { handler: () => ({}) },
-      }),
+      })
     );
 
     const doc = await fetchDoc();
     expect(doc.paths["/users/{id}"]?.get).toBeDefined();
     expect(doc.paths["/users/{id}"]?.parameters).toContainEqual(
-      expect.objectContaining({ name: "id", in: "path", required: true }),
+      expect.objectContaining({ name: "id", in: "path", required: true })
     );
   });
 
@@ -68,7 +68,7 @@ describe("defineOpenAPI — e2e", () => {
       defineRoute({
         route: "/users",
         post: { validate: { body: User }, handler: () => ({}) },
-      }),
+      })
     );
 
     const doc = await fetchDoc();
@@ -87,7 +87,7 @@ describe("defineOpenAPI — e2e", () => {
           validate: { body: z.object({ name: z.string() }) },
           handler: async (event) => await event.req.json(),
         },
-      }),
+      })
     );
 
     const ok = await app.request("/echo", {

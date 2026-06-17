@@ -199,7 +199,7 @@ describe("defineRoute — runtime behavior of the typed surface", () => {
     expect(
       harvestRoutes(app)
         .map((r) => r.route)
-        .sort(),
+        .sort()
     ).toEqual(["/health", "/posts/:id"]);
   });
 

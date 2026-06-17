@@ -75,7 +75,7 @@ export type TypedFetch<Source, R = NormalizeRoutes<Source>> = <
   const O extends { method: MethodInput<R[Route]> },
 >(
   route: Route,
-  options: ExactOptions<O, EndpointFor<R[Route], O["method"]>, O["method"]>,
+  options: ExactOptions<O, EndpointFor<R[Route], O["method"]>, O["method"]>
 ) => Promise<TypedResponse<ResponseOf<EndpointFor<R[Route], O["method"]>>>>;
 
 // ─── runtime ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ export interface CreateTypedFetchOptions {
  * const res = await api("/posts/:id", { method: "post", params: { id: 1 }, body: { title } })
  */
 export function createTypedFetch<Source>(
-  options: CreateTypedFetchOptions = {},
+  options: CreateTypedFetchOptions = {}
 ): TypedFetch<Source> {
   const { baseURL = "", fetch: transport = globalThis.fetch, headers: baseHeaders } = options;
 

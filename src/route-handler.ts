@@ -115,7 +115,7 @@ export type MethodHandler<
   P extends SchemaWithJSON | undefined,
   RH = InferMethodResponse<V>,
 > = (
-  event: MethodEvent<V, P>,
+  event: MethodEvent<V, P>
 ) =>
   | (RH & ConstResponse<InferMethodResponse<V>>)
   | Promise<RH & ConstResponse<InferMethodResponse<V>>>;
@@ -420,7 +420,7 @@ export function defineRouteHandler<
 >(
   def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R> &
     Record<K, unknown>,
-  options: RouteHandlerOptions = {},
+  options: RouteHandlerOptions = {}
 ): RouteHandler<
   RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R>,
   MethodsRecord<K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
@@ -608,7 +608,7 @@ export function defineRoute<
   def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
     route: R;
   } & Record<K, unknown>,
-  options: RouteHandlerOptions = {},
+  options: RouteHandlerOptions = {}
 ): RoutePlugin<RouteRecord<R, K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>> {
   const { route, ...rest } = def;
   const handler = defineRouteHandler(rest, options);
@@ -621,7 +621,7 @@ function makeDispatcher(
   methods: RuntimeMethods,
   options: RouteHandlerOptions,
   meta: H3RouteMeta | undefined,
-  onValidationError: OnValidationError | undefined,
+  onValidationError: OnValidationError | undefined
 ): EventHandlerWithFetch {
   return defineHandler({
     meta,
@@ -653,7 +653,7 @@ function makeDispatcher(
         entry.validate,
         entry.stream,
         entry.onValidationError ?? onValidationError,
-        options.decode,
+        options.decode
       );
       Reflect.set(event, "validated", validated);
 
@@ -667,7 +667,7 @@ function makeDispatcher(
         entry.stream?.response,
         event.res.status,
         event,
-        entry.onValidationError ?? onValidationError,
+        entry.onValidationError ?? onValidationError
       );
 
       // HEAD: the GET path ran for side effects/headers; the body is omitted.
@@ -682,7 +682,7 @@ async function runRequestValidation(
   validate: AnyMethodValidate | undefined,
   stream: MethodStream | undefined,
   onValidationError: OnValidationError | undefined,
-  decode: boolean | undefined,
+  decode: boolean | undefined
 ): Promise<Record<string, unknown>> {
   const mk = (source: ValidateSource) => resolveOnError(source, event, onValidationError);
 
@@ -709,7 +709,7 @@ async function runRequestValidation(
     const req = validateBody(
       event.req,
       { body: validate?.body, stream: stream?.body },
-      { onError: mk("body") },
+      { onError: mk("body") }
     );
     Reflect.set(event, "req", req);
   }
@@ -763,7 +763,7 @@ function runResponseValidation(
   streamResponse: ResponseStreamMap | undefined,
   status: number | undefined,
   event: H3Event,
-  onValidationError: OnValidationError | undefined,
+  onValidationError: OnValidationError | undefined
 ): Promise<unknown> | unknown {
   const code = status ?? 200;
 
@@ -803,7 +803,7 @@ function isStreamLike(value: unknown): boolean {
  */
 function resolveResponseSchema(
   response: ResponseValidation,
-  status: number | undefined,
+  status: number | undefined
 ): SchemaWithJSON | undefined {
   if (isSchema(response)) return response;
   const code = status ?? 200;

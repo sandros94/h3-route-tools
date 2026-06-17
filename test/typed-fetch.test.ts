@@ -167,7 +167,7 @@ describe("TypedFetch — response is typed as the wire shape, not the pre-serial
   it("the runtime value agrees: res.json().when is a string", async () => {
     const api = createTypedFetch<typeof datedApp>({ fetch: datedApp.request });
     const data = await api("/events/:id", { method: "get", params: { id: 1 } }).then((r) =>
-      r.json(),
+      r.json()
     );
     expect(typeof data.when).toBe("string");
     expect(data).toEqual({ id: 1, when: "1970-01-01T00:00:00.000Z" });

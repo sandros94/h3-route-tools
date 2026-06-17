@@ -50,14 +50,14 @@ describe("extendRouteTypes — rewrites our routes' generated InternalApi entrie
 
     // Runtime method keys are lowercase (what `$fetch` looks up); read them case-agnostically.
     const byMethod = Object.fromEntries(
-      Object.entries(routes["/posts/:id"] ?? {}).map(([method, strings]) => [method, strings?.[0]]),
+      Object.entries(routes["/posts/:id"] ?? {}).map(([method, strings]) => [method, strings?.[0]])
     );
     expect(Object.keys(byMethod).sort()).toEqual(["get", "post"]);
     expect(byMethod.get).toBe(
-      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route').default>['get']`,
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route').default>['get']`
     );
     expect(byMethod.post).toBe(
-      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route').default>['post']`,
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route').default>['post']`
     );
     expect(byMethod.default).toBeUndefined();
   });
@@ -95,11 +95,11 @@ describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
     await extendRouteTypes(routes, typesDir);
 
     const byMethod = Object.fromEntries(
-      Object.entries(routes["/posts"] ?? {}).map(([method, strings]) => [method, strings?.[0]]),
+      Object.entries(routes["/posts"] ?? {}).map(([method, strings]) => [method, strings?.[0]])
     );
     expect(Object.keys(byMethod)).toEqual(["get"]);
     expect(byMethod.get).toBe(
-      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route-get').default>['get']`,
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-route-get').default>['get']`
     );
   });
 
@@ -107,7 +107,7 @@ describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
     // nitro-route declares get + post; a `*.get.ts` file would only ever route GET.
     const routes: NitroTypes["routes"] = { "/posts": lockedEntry("get", "./nitro-route") };
     await expect(extendRouteTypes(routes, typesDir)).rejects.toThrow(
-      /locked to GET .* declares: get, post/s,
+      /locked to GET .* declares: get, post/s
     );
   });
 
@@ -115,7 +115,7 @@ describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
     // nitro-route-get declares only get, but sits in a `*.post.ts` file.
     const routes: NitroTypes["routes"] = { "/posts": lockedEntry("post", "./nitro-route-get") };
     await expect(extendRouteTypes(routes, typesDir)).rejects.toThrow(
-      /locked to POST .* declares: get/s,
+      /locked to POST .* declares: get/s
     );
   });
 
@@ -174,7 +174,7 @@ describe("buildOpenAPIOverlay — rich OpenAPI paths from our routes' contracts"
   it("emits parameters, requestBody, and response content from the handler contract", async () => {
     const { paths } = await buildOpenAPIOverlay(
       { "/posts/:id": nitroEntry("./nitro-route") },
-      typesDir,
+      typesDir
     );
     expect(paths["/posts/{id}"]).toMatchObject({
       parameters: expect.arrayContaining([
@@ -188,7 +188,7 @@ describe("buildOpenAPIOverlay — rich OpenAPI paths from our routes' contracts"
   it("returns empty paths for non-ours / unresolvable routes", async () => {
     const { paths } = await buildOpenAPIOverlay(
       { "/plain": nitroEntry("./nitro-plain"), "/missing": nitroEntry("./does-not-exist") },
-      typesDir,
+      typesDir
     );
     expect(paths).toEqual({});
   });

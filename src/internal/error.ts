@@ -9,7 +9,7 @@ export const UNSUPPORTED_MEDIA_TYPE = "Unsupported Media Type";
 export function createValidationError<DataT>(cause: HTTPError<DataT>): HTTPError<DataT>;
 export function createValidationError(cause: unknown): HTTPError<ValidationErrorData>;
 export function createValidationError(
-  cause: unknown,
+  cause: unknown
 ): HTTPError<ValidationErrorData> | HTTPError<unknown> {
   if (HTTPError.isError(cause)) return cause;
 
@@ -32,7 +32,7 @@ export function createValidationError(
 
 /** 415 thrown when a content-type map is declared and `Content-Type` matches no declared key. */
 export function createUnsupportedMediaTypeError(
-  received: string | null | undefined,
+  received: string | null | undefined
 ): HTTPError<UnsupportedMediaTypeData> {
   return new HTTPError<UnsupportedMediaTypeData>({
     status: 415,

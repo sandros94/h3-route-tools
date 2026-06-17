@@ -32,7 +32,7 @@ export function defineOpenAPI(options: OpenAPIPluginOptions): H3Plugin {
         info: options.info,
         routes: harvestRoutes(h3),
         errors: options.errors,
-      }),
+      })
     );
   };
 }

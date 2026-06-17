@@ -37,14 +37,14 @@ export const app = new H3Typed()
         query: v.object({
           draft: v.pipe(
             v.string(),
-            v.transform((s) => s === "true"),
+            v.transform((s) => s === "true")
           ),
         }),
         body: v.object({
           title: v.string(),
           tags: v.pipe(
             v.string(),
-            v.transform((s) => s.split(",")),
+            v.transform((s) => s.split(","))
           ),
         }),
         response: v.object({ id: v.number(), tagCount: v.number() }),

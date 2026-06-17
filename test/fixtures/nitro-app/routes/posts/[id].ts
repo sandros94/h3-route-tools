@@ -17,7 +17,7 @@ export default defineRouteHandler({
           v.array(v.string()),
           v.pipe(
             v.string(),
-            v.transform((s) => s.split(",")),
+            v.transform((s) => s.split(","))
           ),
         ]),
       }),
