@@ -152,18 +152,6 @@ export interface ExtractComponentsResult {
   components: ComponentsRegistry;
 }
 
-/**
- * Per-method validation config consumed by the route primitives.
- * `response` is intentionally absent here — it's a separate concern handled at the handler level.
- */
-export interface RequestValidation {
-  body?: BodyValidation;
-  stream?: StreamMap;
-  headers?: SchemaWithJSON;
-  query?: SchemaWithJSON;
-  params?: SchemaWithJSON;
-}
-
 /** Headers and query values arrive as strings; this narrows schema output to that constraint. */
 export type StringHeaders<T> = {
   [K in keyof T]: Extract<T[K], string>;
