@@ -2,6 +2,17 @@
   "name": "h3-route-tools",
   "version": "0.0.0",
   "description": "Experimental library to generate typed routes for H3",
+  "keywords": [
+    "h3",
+    "nitro",
+    "openapi",
+    "routes",
+    "standard-schema",
+    "type-safe",
+    "typed-fetch",
+    "typescript",
+    "validation"
+  ],
   "license": "MIT",
   "author": {
     "name": "Sandro Circi",
