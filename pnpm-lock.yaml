@@ -85,18 +85,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
-  playgrounds/nitro:
-    dependencies:
-      h3-route-tools:
-        specifier: link:../..
-        version: link:../..
-      nitro:
-        specifier: ^3.0.260610-beta
-        version: 3.0.260610-beta(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.2.0)(jiti@2.7.0)(rollup@4.62.0)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-
   playgrounds/nitro-vue:
     dependencies:
       h3-route-tools:
@@ -127,6 +115,18 @@ importers:
       vue-tsc:
         specifier: ^3.3.5
         version: 3.3.5(typescript@6.0.3)
+
+  test/fixtures/nitro-app:
+    dependencies:
+      h3-route-tools:
+        specifier: link:../../..
+        version: link:../../..
+      nitro:
+        specifier: ^3.0.260610-beta
+        version: 3.0.260610-beta(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.2.0)(jiti@2.7.0)(rollup@4.62.0)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
+      valibot:
+        specifier: ^1.4.1
+        version: 1.4.1(typescript@6.0.3)
 
 packages:
 

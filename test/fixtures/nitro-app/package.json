@@ -1,0 +1,10 @@
+{
+  "name": "fixture-nitro-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "h3-route-tools": "workspace:*",
+    "nitro": "^3.0.260610-beta",
+    "valibot": "^1.4.1"
+  }
+}

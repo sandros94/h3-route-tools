@@ -1,5 +1,6 @@
 packages:
   - ./
   - playgrounds/*
+  - test/fixtures/nitro-app
 
 ignoreWorkspaceRootCheck: true

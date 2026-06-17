@@ -41,6 +41,7 @@ coverage
 *.lcov
 .nyc_output
 tsconfig.vitest-temp.json
+.fetch-check.*
 
 # Logs
 logs

@@ -3,7 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
-const PLAYGROUND = resolve(__dirname, "../playgrounds/nitro");
+const FIXTURE = resolve(__dirname, "fixtures/nitro-app");
 const NITRO = resolve(__dirname, "../node_modules/.bin/nitro");
 const TSGO = resolve(__dirname, "../node_modules/.bin/tsgo");
 const POSTS = `typeof import('../../../routes/posts/[id]').default`;
@@ -12,8 +12,8 @@ const POSTS = `typeof import('../../../routes/posts/[id]').default`;
 describe("nitro e2e — generated InternalApi + typed $fetch", () => {
   let dts: string;
   beforeAll(() => {
-    execFileSync(NITRO, ["prepare"], { cwd: PLAYGROUND, stdio: "pipe", timeout: 120_000 });
-    dts = readFileSync(resolve(PLAYGROUND, "node_modules/.nitro/types/nitro-routes.d.ts"), "utf8");
+    execFileSync(NITRO, ["prepare"], { cwd: FIXTURE, stdio: "pipe", timeout: 120_000 });
+    dts = readFileSync(resolve(FIXTURE, "node_modules/.nitro/types/nitro-routes.d.ts"), "utf8");
   }, 120_000);
 
   it("emits per-method NitroMethodsOf entries for our multi-method route", () => {
@@ -33,8 +33,8 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
   // Unbiased: typecheck a transient file that uses nitro's OWN `$Fetch` over the real augmentation. A
   // wrong / `any` / missing-method augmentation makes tsgo fail (the `@ts-expect-error` guards `any`).
   it("types nitro's $fetch from our route contracts", () => {
-    const checkFile = resolve(PLAYGROUND, ".fetch-check.ts");
-    const checkTsconfig = resolve(PLAYGROUND, ".fetch-check.tsconfig.json");
+    const checkFile = resolve(FIXTURE, ".fetch-check.ts");
+    const checkTsconfig = resolve(FIXTURE, ".fetch-check.tsconfig.json");
     writeFileSync(
       checkFile,
       [
@@ -65,7 +65,7 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
     );
     try {
       execFileSync(TSGO, ["-p", checkTsconfig], {
-        cwd: PLAYGROUND,
+        cwd: FIXTURE,
         stdio: "pipe",
         timeout: 120_000,
       });
@@ -85,8 +85,8 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
   let server: ChildProcess;
 
   beforeAll(async () => {
-    execFileSync(NITRO, ["build"], { cwd: PLAYGROUND, stdio: "pipe", timeout: 120_000 });
-    server = spawn("node", [resolve(PLAYGROUND, ".output/server/index.mjs")], {
+    execFileSync(NITRO, ["build"], { cwd: FIXTURE, stdio: "pipe", timeout: 120_000 });
+    server = spawn("node", [resolve(FIXTURE, ".output/server/index.mjs")], {
       env: { ...process.env, PORT: String(PORT) },
       stdio: "pipe",
     });
@@ -172,7 +172,7 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
 // Runs last + cleans up in `finally`: a stray route file would break the other describes' prepare/build.
 describe("nitro e2e — method-lock build check", () => {
   it("fails `nitro prepare` when a method-locked file declares extra methods", () => {
-    const badRoute = resolve(PLAYGROUND, "routes/__method-lock-check.get.ts");
+    const badRoute = resolve(FIXTURE, "routes/__method-lock-check.get.ts");
     writeFileSync(
       badRoute,
       [
@@ -187,7 +187,7 @@ describe("nitro e2e — method-lock build check", () => {
     try {
       let error: { stdout?: Buffer; stderr?: Buffer } | undefined;
       try {
-        execFileSync(NITRO, ["prepare"], { cwd: PLAYGROUND, stdio: "pipe", timeout: 120_000 });
+        execFileSync(NITRO, ["prepare"], { cwd: FIXTURE, stdio: "pipe", timeout: 120_000 });
       } catch (e) {
         error = e as { stdout?: Buffer; stderr?: Buffer };
       }
