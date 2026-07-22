@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 const FIXTURE = resolve(__dirname, "fixtures/nitro-app");
 const NITRO = resolve(__dirname, "../node_modules/.bin/nitro");
-const TSGO = resolve(__dirname, "../node_modules/.bin/tsgo");
+const TSC = resolve(__dirname, "../node_modules/.bin/tsc");
 const POSTS = `typeof import('../../../routes/posts/[id]').default`;
 
 // Assumes the workspace is stubbed (`pnpm stub` / CI `build --stub`) so `h3-route-tools/nitro` → src.
@@ -38,7 +38,7 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
   });
 
   // Unbiased: typecheck a transient file that uses nitro's OWN `$Fetch` over the real augmentation. A
-  // wrong / `any` / missing-method augmentation makes tsgo fail (the `@ts-expect-error` guards `any`).
+  // wrong / `any` / missing-method augmentation makes tsc fail (the `@ts-expect-error` guards `any`).
   // oxlint-disable-next-line vitest/expect-expect
   it("types nitro's $fetch from our route contracts", () => {
     const checkFile = resolve(FIXTURE, ".fetch-check.ts");
@@ -75,7 +75,7 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
       }),
     );
     try {
-      execFileSync(TSGO, ["-p", checkTsconfig], {
+      execFileSync(TSC, ["-p", checkTsconfig], {
         cwd: FIXTURE,
         stdio: "pipe",
         timeout: 120_000,

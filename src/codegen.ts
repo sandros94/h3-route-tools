@@ -1,6 +1,6 @@
-import type { CompilerOptions, CompilerHost } from "typescript";
-import { basename, dirname, join, resolve } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import type { H3 } from "h3";
 
 import { type OpenAPIDocument, getOpenAPIDocument } from "h3-route-tools/openapi";
@@ -10,23 +10,70 @@ import { type OpenAPIDocument, getOpenAPIDocument } from "h3-route-tools/openapi
   - generateRoutesDts / writeRoutesDts: flatten a route type alias to a self-contained `.d.ts` from the
     app's types. Loads the optional `typescript` peer on demand, so the rest of the entry needs no TS.
   - writeOpenAPIDocument: run a configured app and emit its OpenAPI document to a file.
+
+  TypeScript 7 (the Go port) dropped the in-process compiler API: the checker now lives in the `tsgo`
+  binary, reachable only via the `typescript/unstable/*` client. We drive it here — spawn an API server,
+  overlay the sources through a virtual filesystem, and query the checker over the real project.
 */
 
-type TsModule = typeof import("typescript");
+type TsAsync = typeof import("typescript/unstable/async");
+type TsAst = typeof import("typescript/unstable/ast");
 
-let tsModule: TsModule | undefined;
+let tsModules: { async: TsAsync; ast: TsAst } | undefined;
 /** Load the optional `typescript` peer on first use; throws a clear error if it isn't installed. */
-async function loadTypeScript(): Promise<TsModule> {
-  if (!tsModule) {
+async function loadTypeScript(): Promise<{ async: TsAsync; ast: TsAst }> {
+  if (!tsModules) {
     try {
-      tsModule = (await import("typescript")).default;
+      const [async, ast] = await Promise.all([
+        import("typescript/unstable/async"),
+        import("typescript/unstable/ast"),
+      ]);
+      tsModules = { async, ast };
     } catch {
       throw new Error(
         "h3-route-tools/codegen: route type-gen needs the optional peer `typescript` (e.g. `npm i -D typescript`).",
       );
     }
   }
-  return tsModule;
+  return tsModules;
+}
+
+/** Walk up from `dir` to the nearest `tsconfig.json`, or `undefined` if none exists above it. */
+function findNearestTsconfig(dir: string): string | undefined {
+  let current = dir;
+  for (;;) {
+    const candidate = join(current, "tsconfig.json");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/**
+ * A transient tsconfig that inherits the app's real config (for its `lib`, `target`, `strict`, and
+ * module-resolution settings) but scopes the program to `files` and overlays the given options.
+ * With no base config it falls back to a strict standalone program.
+ */
+function virtualTsconfig(
+  base: string | undefined,
+  compilerOptions: Record<string, unknown>,
+  files: string[],
+): string {
+  return JSON.stringify({
+    ...(base ? { extends: base } : {}),
+    compilerOptions: { ...(base ? {} : { strict: true }), ...compilerOptions },
+    files,
+    include: [],
+  });
+}
+
+/** A partial virtual filesystem over `overlays`; unknown paths fall back to the real disk. */
+function overlayFileSystem(overlays: Record<string, string>) {
+  return {
+    readFile: (name: string) => (name in overlays ? overlays[name] : undefined),
+    fileExists: (name: string) => (name in overlays ? true : undefined),
+  };
 }
 
 // The checker won't evaluate a lazy mapped/generic type unless forced, so the alias is wrapped in
@@ -54,51 +101,29 @@ export interface GenerateRoutesOptions {
   exportAs?: string;
 }
 
-/** Resolve the project's compiler options from the nearest (or given) tsconfig. */
-function loadProject(ts: TsModule, file: string, tsconfig?: string): CompilerOptions {
-  const configPath = tsconfig
-    ? resolve(tsconfig)
-    : ts.findConfigFile(dirname(resolve(file)), (f) => ts.sys.fileExists(f), "tsconfig.json");
-  if (!configPath) return { strict: true, noEmit: true };
-  const read = ts.readConfigFile(configPath, (f) => ts.sys.readFile(f));
-  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(configPath));
-  // Force `.ts` imports + noEmit so the virtual flatten module resolves the target regardless of
-  // the project's own resolution settings.
-  return { ...parsed.options, noEmit: true, allowImportingTsExtensions: true };
-}
-
-function withVirtualFile(
-  ts: TsModule,
-  options: CompilerOptions,
-  path: string,
-  content: string,
-): CompilerHost {
-  const host = ts.createCompilerHost(options);
-  const getSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, version, onError, shouldCreate) =>
-    name === path
-      ? ts.createSourceFile(name, content, version, true)
-      : getSourceFile(name, version, onError, shouldCreate);
-  const fileExists = host.fileExists.bind(host);
-  host.fileExists = (name) => name === path || fileExists(name);
-  const readFile = host.readFile.bind(host);
-  host.readFile = (name) => (name === path ? content : readFile(name));
-  return host;
-}
-
 /** Names the generated literal references that aren't resolvable standalone (leaked user types). */
-function findLeakedNames(ts: TsModule, dts: string, options: CompilerOptions): string[] {
-  const path = "__h3tr_check__.ts";
+async function findLeakedNames(
+  api: InstanceType<TsAsync["API"]>,
+  base: string | undefined,
+  overlays: Record<string, string>,
+  checkFile: string,
+  checkTsconfig: string,
+  dts: string,
+): Promise<string[]> {
   // The generated dts is self-contained — it only references lib built-ins (`Date`, …), never node or
   // package types. Drop `types` so the check program skips loading `@types/node`.
-  const checkOptions: CompilerOptions = { ...options, types: [] };
-  const host = withVirtualFile(ts, checkOptions, path, dts);
-  const program = ts.createProgram([path], checkOptions, host);
+  overlays[checkFile] = dts;
+  overlays[checkTsconfig] = virtualTsconfig(base, { noEmit: true, types: [] }, [checkFile]);
+  const snapshot = await api.updateSnapshot({
+    openProjects: [checkTsconfig],
+    fileChanges: { created: [checkFile, checkTsconfig] },
+  });
+  const project = snapshot.getProject(checkTsconfig);
+  if (!project) return [];
   const names = new Set<string>();
-  for (const d of ts.getPreEmitDiagnostics(program)) {
+  for (const d of await project.program.getSemanticDiagnostics()) {
     if (d.code !== 2304) continue; // TS2304: Cannot find name 'X'.
-    const text = ts.flattenDiagnosticMessageText(d.messageText, "\n");
-    const match = text.match(/Cannot find name '(.+?)'/);
+    const match = d.text.match(/Cannot find name '(.+?)'/);
     if (match) names.add(match[1]!);
   }
   return [...names];
@@ -120,55 +145,71 @@ function findLeakedNames(ts: TsModule, dts: string, options: CompilerOptions): s
  */
 export async function generateRoutesDts(options: GenerateRoutesOptions): Promise<string> {
   const { file, typeName, tsconfig, exportAs = typeName } = options;
-  const ts = await loadTypeScript();
-  const compilerOptions = loadProject(ts, file, tsconfig);
+  const { async: ts, ast } = await loadTypeScript();
 
   const target = resolve(file);
-  const virtualPath = join(dirname(target), "__h3tr_flatten__.ts");
-  const importSpec = `./${basename(target)}`;
-  const content = `${EXPAND_PRELUDE}\nexport type __Flat = __Expand<import(${JSON.stringify(importSpec)}).${typeName}>;\n`;
+  const dir = dirname(target);
+  const base = tsconfig ? resolve(tsconfig) : findNearestTsconfig(dir);
+  const flattenTsconfig = join(dir, "__h3tr_flatten.tsconfig.json");
+  const checkFile = join(dir, "__h3tr_check__.ts");
+  const checkTsconfig = join(dir, "__h3tr_check.tsconfig.json");
 
-  // The program only needs the flatten module + the target it imports — TypeScript pulls in the rest of
-  // the graph (the lib + schemas) by resolution, so we don't seed it with the whole project's files.
-  const host = withVirtualFile(ts, compilerOptions, virtualPath, content);
-  const program = ts.createProgram([target, virtualPath], compilerOptions, host);
-  const checker = program.getTypeChecker();
-  const source = program.getSourceFile(virtualPath);
-  if (!source) throw new Error("generateRoutesDts: failed to load the flatten module.");
+  // Append the flatten alias to a copy of the source module so `typeName` resolves in its own scope —
+  // no cross-file import, so the target's real config (module resolution, lib) applies unchanged. The
+  // program roots at the overlaid target; TypeScript pulls in the rest of the graph (lib + schemas).
+  const original = await readFile(target, "utf8");
+  const overlays: Record<string, string> = {
+    [target]: `${original}\n${EXPAND_PRELUDE}\nexport type __Flat = __Expand<${typeName}>;\n`,
+    [flattenTsconfig]: virtualTsconfig(base, { noEmit: true }, [target]),
+  };
 
-  let literal: string | undefined;
-  ts.forEachChild(source, (node) => {
-    if (ts.isTypeAliasDeclaration(node) && node.name.text === "__Flat") {
-      const type = checker.getTypeAtLocation(node.name);
-      literal = checker.typeToString(
-        type,
-        node,
-        ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.InTypeAlias,
+  const api = new ts.API({ fs: overlayFileSystem(overlays), cwd: dir });
+  try {
+    const snapshot = await api.updateSnapshot({ openProjects: [flattenTsconfig] });
+    const project = snapshot.getProject(flattenTsconfig);
+    if (!project) throw new Error("generateRoutesDts: failed to load the flatten project.");
+    const source = await project.program.getSourceFile(target);
+    if (!source) throw new Error("generateRoutesDts: failed to load the flatten module.");
+
+    let literal: string | undefined;
+    for (const node of source.statements) {
+      if (ast.isTypeAliasDeclaration(node) && node.name.text === "__Flat") {
+        const type = await project.checker.getTypeAtLocation(node.name);
+        if (type) {
+          literal = await project.checker.typeToString(
+            type,
+            node,
+            ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.InTypeAlias,
+          );
+        }
+        break;
+      }
+    }
+    if (!literal || literal === "any") {
+      throw new Error(
+        `generateRoutesDts: could not resolve type \`${typeName}\` exported from ${file}.`,
       );
     }
-  });
-  if (!literal || literal === "any") {
-    throw new Error(
-      `generateRoutesDts: could not resolve type \`${typeName}\` exported from ${file}.`,
-    );
-  }
 
-  const dts = `export type ${exportAs} = ${literal};\n`;
+    const dts = `export type ${exportAs} = ${literal};\n`;
 
-  const leaked = findLeakedNames(ts, dts, compilerOptions);
-  if (leaked.length) {
-    throw new Error(
-      `generateRoutesDts: the result references name(s) not available standalone: ${leaked.join(", ")}. ` +
-        `A schema infers to a user-defined named type — make it structural, or define the type in the output file.`,
-    );
-  }
-  if (/\bany\b/.test(literal)) {
-    console.warn(
-      `generateRoutesDts: some types degraded to \`any\` (usually a recursive schema — a TypeScript inference limit).`,
-    );
-  }
+    const leaked = await findLeakedNames(api, base, overlays, checkFile, checkTsconfig, dts);
+    if (leaked.length) {
+      throw new Error(
+        `generateRoutesDts: the result references name(s) not available standalone: ${leaked.join(", ")}. ` +
+          `A schema infers to a user-defined named type — make it structural, or define the type in the output file.`,
+      );
+    }
+    if (/\bany\b/.test(literal)) {
+      console.warn(
+        `generateRoutesDts: some types degraded to \`any\` (usually a recursive schema — a TypeScript inference limit).`,
+      );
+    }
 
-  return dts;
+    return dts;
+  } finally {
+    await api.close();
+  }
 }
 
 /** {@link generateRoutesDts} written to `outFile`, returning the source. */

@@ -59,33 +59,31 @@
     "prepack": "pnpm build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc",
     "typecheck:playgrounds": "pnpm -F playground-nitro-vue typecheck",
     "bench": "vitest bench --run"
   },
   "devDependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "@types/node": "^25",
-    "@typescript/native-preview": "7.0.0-dev.20260421.2",
-    "@valibot/to-json-schema": "^1.7.0",
-    "@vitest/coverage-v8": "^4.1.7",
-    "automd": "^0.4.3",
+    "@types/node": "^24",
+    "@valibot/to-json-schema": "^1.7.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "nitro": "^3.0.260610-beta",
-    "obuild": "^0.4.36",
-    "oxfmt": "^0.55.0",
-    "oxlint": "^1.70.0",
-    "oxlint-tsgolint": "^0.24.0",
+    "obuild": "^0.4.38",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "~7.0.2001",
     "simple-git-hooks": "^2.13.1",
-    "typescript": "^6.0.3",
-    "valibot": "^1.4.1",
-    "vitest": "^4.1.7",
+    "typescript": "~7.0.2",
+    "valibot": "^1.4.2",
+    "vitest": "^4.1.10",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
+    "h3": ">=2.0.1-rc.25 || ^2.0.1",
     "nitro": ">=3.0.1",
-    "srvx": "^0.11.15",
-    "typescript": ">=5.0.0"
+    "srvx": "^0.11.22",
+    "typescript": ">=7.0.0"
   },
   "peerDependenciesMeta": {
     "nitro": {
@@ -104,14 +102,14 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "11.9.0",
+      "version": "11.15.1",
       "onFail": "download"
     },
     "runtime": {
       "name": "node",
-      "version": ">=24.17",
+      "version": ">=24.17.0",
       "onFail": "error"
     }
   },
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "pnpm@11.15.1"
 }

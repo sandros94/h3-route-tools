@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "prepare-types": "nitro prepare",
-    "typecheck": "nitro prepare && vue-tsc --noEmit"
+    "typecheck": "nitro prepare && golar typecheck"
   },
   "dependencies": {
     "h3-route-tools": "workspace:*",
@@ -17,9 +17,10 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@golar/vue": "0.1.10",
     "@vitejs/plugin-vue": "^6.0.7",
+    "golar": "0.1.10",
     "nitro": "^3.0.260610-beta",
-    "vite": "^8.0.16",
-    "vue-tsc": "^3.3.5"
+    "vite": "^8.0.16"
   }
 }
