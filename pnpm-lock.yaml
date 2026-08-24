@@ -282,7 +282,7 @@ importers:
         version: 1.5.1
       valibot:
         specifier: ^1.4.1
-        version: 1.4.1(typescript@7.0.2)
+        version: 1.4.2(typescript@7.0.2)
       vue:
         specifier: ^3.5.38
         version: 3.5.38(typescript@7.0.2)
@@ -316,7 +316,7 @@ importers:
         version: 3.0.260610-beta(chokidar@5.0.0)(dotenv@17.4.2)(giget@3.2.0)(jiti@2.7.0)(rollup@4.62.0)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
       valibot:
         specifier: ^1.4.1
-        version: 1.4.1(typescript@7.0.2)
+        version: 1.4.2(typescript@7.0.2)
 
 packages:
 
@@ -2421,14 +2421,6 @@ packages:
       uploadthing:
         optional: true
 
-  valibot@1.4.1:
-    resolution: {integrity: sha512-klCmFTz2jeDluy9RwX+F884TCiogtdBJ/YaxSx1EOBYXa3NXNWj8kR1jjN8rzluwojJVWWaHJ4r1U5LfICnM3g==}
-    peerDependencies:
-      typescript: '>=5'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
   valibot@1.4.2:
     resolution: {integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==}
     peerDependencies:
@@ -4255,10 +4247,6 @@ snapshots:
       chokidar: 5.0.0
       db0: 0.3.4
       ofetch: 2.0.0-alpha.3
-
-  valibot@1.4.1(typescript@7.0.2):
-    optionalDependencies:
-      typescript: 7.0.2
 
   valibot@1.4.2(typescript@7.0.2):
     optionalDependencies:
