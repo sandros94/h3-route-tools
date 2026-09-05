@@ -18,9 +18,9 @@
   },
   "devDependencies": {
     "@golar/vue": "0.1.10",
-    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitejs/plugin-vue": "^6.0.8",
     "golar": "0.1.10",
     "nitro": "^3.0.260610-beta",
-    "vite": "^8.0.16"
+    "vite": "^8.2.2"
   }
 }
